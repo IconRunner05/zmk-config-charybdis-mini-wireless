@@ -76,12 +76,12 @@
 
         Delete {
             bindings = <&kp DELETE>;
-            key-positions = <8 9>;
+            key-positions = <16 15>;
         };
 
-        CapsWord {
-            bindings = <&caps_word>;
-            key-positions = <17 18>;
+        Backspace {
+            bindings = <&kp BACKSPACE>;
+            key-positions = <16 14>;
         };
     };
 
