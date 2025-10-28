@@ -120,10 +120,10 @@
 
         BASE {
             bindings = <
-&kp TAB         &kp Q  &kp W  &kp E             &kp R         &kp T                     &kp Y      &kp U   &kp I      &kp O    &kp P          &kp BSPC
-&kp ESCAPE      &kp A  &kp S  &kp D             &kp F         &kp G                     &kp H      &kp J   &kp K      &kp L    &kp SEMICOLON  &kp APOS
-&kp LEFT_SHIFT  &kp Z  &kp X  &kp C             &kp V         &kp B                     &kp N      &kp M   &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
-                              &kp LEFT_CONTROL  &kp NUMBER_2  &u_mt LEFT_SHIFT SPACE    &kp SPACE  &kp N5
+&kp TAB         &kp Q  &kp W  &kp E             &kp R            &kp T                     &kp Y      &kp U            &kp I      &kp O    &kp P          &kp BSPC
+&kp ESCAPE      &kp A  &kp S  &kp D             &kp F            &kp G                     &kp H      &kp J            &kp K      &kp L    &kp SEMICOLON  &kp APOS
+&kp LEFT_SHIFT  &kp Z  &kp X  &kp C             &kp V            &kp B                     &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
+                              &kp LEFT_CONTROL  &lt 1 BACKSPACE  &u_mt LEFT_SHIFT SPACE    &kp SPACE  &lt 2 BACKSPACE
             >;
         };
 
@@ -138,10 +138,10 @@
 
         SYMNUM {
             bindings = <
-&bt BT_CLR      &kp EXCL      &kp AT       &kp HASH    &kp DLLR  &kp PRCNT    &kp CARET  &kp AMPS                 &kp KP_MULTIPLY   &kp LPAR              &kp RPAR              &kp DEL
-&studio_unlock  &trans        &bt BT_PRV   &bt BT_NXT  &trans    &trans       &kp UNDER  &u_mt RIGHT_SHIFT EQUAL  &u_mt RCTRL LBKT  &u_mt RIGHT_ALT RBKT  &u_mt RIGHT_GUI BSLH  &kp GRAVE
-&trans          &out OUT_TOG  &bootloader  &trans      &trans    &trans       &kp MINUS  &kp PLUS                 &kp LBRC          &kp RBRC              &kp PIPE              &kp TILDE
-                                           &trans      &trans    &mo 3        &trans     &trans
+&bt BT_CLR      &kp EXCL      &kp AT       &kp HASH    &kp DLLR        &kp PRCNT    &kp CARET  &kp AMPS                 &kp KP_MULTIPLY   &kp LPAR              &kp RPAR              &kp DEL
+&studio_unlock  &trans        &bt BT_PRV   &bt BT_NXT  &bt BT_CLR_ALL  &trans       &kp UNDER  &u_mt RIGHT_SHIFT EQUAL  &u_mt RCTRL LBKT  &u_mt RIGHT_ALT RBKT  &u_mt RIGHT_GUI BSLH  &kp GRAVE
+&trans          &out OUT_TOG  &bootloader  &trans      &trans          &trans       &kp MINUS  &kp PLUS                 &kp LBRC          &kp RBRC              &kp PIPE              &kp TILDE
+                                           &trans      &trans          &mo 3        &trans     &trans
             >;
         };
 
