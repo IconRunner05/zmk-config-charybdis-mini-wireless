@@ -120,7 +120,7 @@
 
         BASE {
             bindings = <
-&kp TAB         &kp Q  &kp W  &kp E             &kp R            &kp T                     &kp Y      &kp U            &kp I      &kp O    &kp P          &kp BSPC
+&kp TAB         &kp Q  &kp W  &kp E             &kp R            &kp T                     &kp Y      &kp U            &kp I      &kp O    &kp P          &kp DELETE
 &kp ESCAPE      &kp A  &kp S  &kp D             &kp F            &kp G                     &kp H      &kp J            &kp K      &kp L    &kp SEMICOLON  &kp APOS
 &kp LEFT_SHIFT  &kp Z  &kp X  &kp C             &kp V            &kp B                     &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
                               &kp LEFT_CONTROL  &lt 1 BACKSPACE  &u_mt LEFT_SHIFT SPACE    &kp SPACE  &lt 2 BACKSPACE
@@ -129,19 +129,19 @@
 
         NUM {
             bindings = <
-&trans  &kp EXCLAMATION  &kp UP    &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
-&trans  &kp QUESTION     &kp DOWN  &kp RIGHT             &trans                 &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp PERIOD  &bt BT_SEL 1
-&trans  &trans           &trans    &trans                &trans                 &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp SLASH   &bt BT_SEL 2
-                                   &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
+&kp CAPSLOCK  &kp EXCLAMATION  &trans  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
+&trans        &kp QUESTION     &trans  &kp COMMA             &kp LS(ENTER)          &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp PERIOD  &bt BT_SEL 1
+&trans        &trans           &trans  &trans                &kp TILDE              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp SLASH   &bt BT_SEL 2
+                                       &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
             >;
         };
 
         NAV {
             bindings = <
-&bt BT_CLR      &kp EXCL      &kp AT       &kp HASH    &kp DLLR           &kp PRCNT    &kp CARET  &kp HOME        &kp UP_ARROW  &kp END    &kp PRINTSCREEN       &kp DEL
-&studio_unlock  &trans        &bt BT_PRV   &bt BT_NXT  &trans             &trans       &kp UNDER  &kp LEFT_ARROW  &kp DOWN      &kp RIGHT  &u_mt RIGHT_GUI BSLH  &kp GRAVE
-&bt BT_CLR_ALL  &out OUT_TOG  &bootloader  &trans      &trans             &trans       &kp MINUS  &kp PLUS        &kp LBRC      &kp RBRC   &kp PIPE              &kp TILDE
-                                           &trans      &kp LC(BACKSPACE)  &mo 3        &trans     &trans
+&bt BT_CLR      &trans        &kp F2        &kp F5            &kp F4             &trans    &trans  &kp HOME        &kp UP_ARROW  &kp END    &kp PRINTSCREEN  &kp DEL
+&studio_unlock  &kp LEFT_GUI  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT     &trans    &trans  &kp LEFT_ARROW  &kp DOWN      &kp RIGHT  &kp LA(SPACE)    &trans
+&bt BT_CLR_ALL  &out OUT_TOG  &bootloader   &trans            &trans             &trans    &trans  &kp PLUS        &kp LBRC      &kp RBRC   &trans           &trans
+                                            &trans            &kp LC(BACKSPACE)  &mo 3     &trans  &trans
             >;
         };
 
