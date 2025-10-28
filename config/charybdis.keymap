@@ -129,10 +129,10 @@
 
         NUM {
             bindings = <
-&trans  &kp EXCLAMATION  &kp UP    &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS    &kp N7        &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
-&trans  &kp QUESTION     &kp DOWN  &kp RIGHT             &trans                 &trans    &kp EQUAL    &kp NUMBER_4  &kp N5        &kp NUMBER_6  &kp PERIOD  &bt BT_SEL 1
-&trans  &trans           &trans    &trans                &trans                 &trans    &kp N0       &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp SLASH   &bt BT_SEL 2
-                                   &trans                &trans                 &trans    &lt 3 ENTER  &kp LSHFT
+&trans  &kp EXCLAMATION  &kp UP    &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
+&trans  &kp QUESTION     &kp DOWN  &kp RIGHT             &trans                 &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp PERIOD  &bt BT_SEL 1
+&trans  &trans           &trans    &trans                &trans                 &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp SLASH   &bt BT_SEL 2
+                                   &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
             >;
         };
 
