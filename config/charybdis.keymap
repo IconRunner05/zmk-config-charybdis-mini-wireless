@@ -14,7 +14,9 @@
         compatible = "zmk,input-listener";
         device = <&trackball>;
         input-processors = <&zip_xy_scaler 1 2>, <&zip_temp_layer 4 400>;
- // Switch to auto-mouse temp layer, decrease sensitivity
+
+        // Switch to auto-mouse temp layer, decrease sensitivity
+
         scroll {
             layers = <5>; // SCROLL
             input-processors =
@@ -118,10 +120,10 @@
 
         BASE {
             bindings = <
-&kp TAB     &kp Q             &kp W             &kp E          &kp R               &kp T                     &kp Y      &kp U               &kp I          &kp O              &kp P                 &kp BSPC
-&kp ESCAPE  &u_mt LEFT_GUI A  &u_mt LEFT_ALT S  &u_mt LCTRL D  &u_mt LEFT_SHIFT F  &kp G                     &kp H      &u_mt LEFT_SHIFT J  &u_mt RCTRL K  &u_mt RIGHT_ALT L  &u_mt RIGHT_GUI SEMI  &kp APOS
-&mo 5       &kp Z             &kp X             &kp C          &kp V               &kp B                     &kp N      &kp M               &kp COMMA      &kp DOT            &kp FSLH              &mo 5
-                                                &kp LGUI       &mo 1               &u_mt LEFT_SHIFT SPACE    &kp SPACE  &mo 2
+&studio_unlock  &kp Q             &kp W             &kp E          &kp R               &kp T           &kp Y         &kp U               &kp I          &kp O              &kp P                 &kp BSPC
+&kp ESCAPE      &u_mt LEFT_GUI A  &u_mt LEFT_ALT S  &u_mt LCTRL D  &u_mt LEFT_SHIFT F  &kp G           &kp H         &u_mt LEFT_SHIFT J  &u_mt RCTRL K  &u_mt RIGHT_ALT L  &u_mt RIGHT_GUI SEMI  &kp APOS
+&kp LEFT_SHIFT  &kp Z             &kp X             &kp C          &kp V               &kp B           &kp N         &kp M               &kp COMMA      &kp DOT            &kp FSLH              &kp RIGHT_SHIFT
+                                                    &kp NUMBER_1   &kp NUMBER_2        &kp NUMBER_3    &kp NUMBER_4  &kp N5
             >;
         };
 
