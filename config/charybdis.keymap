@@ -120,18 +120,18 @@
 
         BASE {
             bindings = <
-&kp TAB       &kp Q  &kp W  &kp E             &kp R            &kp T             &kp Y      &kp U            &kp I      &kp O    &kp P          &kp DELETE
-&kp ESCAPE    &kp A  &kp S  &kp D             &kp F            &kp G             &kp H      &kp J            &kp K      &kp L    &kp SEMICOLON  &kp APOS
-&kp LEFT_GUI  &kp Z  &kp X  &kp C             &kp V            &kp B             &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
-                            &kp LEFT_CONTROL  &lt 1 BACKSPACE  &kp LEFT_SHIFT    &kp SPACE  &lt 2 BACKSPACE
+&kp TAB       &kp Q  &kp W  &kp E             &kp R  &kp T             &kp Y      &kp U            &kp I      &kp O    &kp P          &kp DELETE
+&kp ESCAPE    &kp A  &kp S  &kp D             &kp F  &kp G             &kp H      &kp J            &kp K      &kp L    &kp SEMICOLON  &kp APOS
+&kp LEFT_GUI  &kp Z  &kp X  &kp C             &kp V  &kp B             &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
+                            &kp LEFT_CONTROL  &mo 1  &kp LEFT_SHIFT    &kp SPACE  &lt 2 BACKSPACE
             >;
         };
 
         NUM {
             bindings = <
 &kp CAPSLOCK  &kp EXCLAMATION  &kp TILDE  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
-&trans        &kp QUESTION     &trans     &kp COMMA             &kp LS(ENTER)          &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp PERIOD  &bt BT_SEL 1
-&trans        &trans           &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp SLASH   &bt BT_SEL 2
+&trans        &kp QUESTION     &kp LC(C)  &kp LC(V)             &kp LS(ENTER)          &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp N0      &bt BT_SEL 1
+&trans        &trans           &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
                                           &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
             >;
         };
