@@ -138,9 +138,9 @@
 
         NAV {
             bindings = <
-&bt BT_CLR      &trans        &kp F2        &kp F5            &kp F4             &trans    &trans  &kp HOME        &kp UP_ARROW  &kp END    &kp PRINTSCREEN  &kp DEL
-&studio_unlock  &kp LEFT_GUI  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT     &trans    &trans  &kp LEFT_ARROW  &kp DOWN      &kp RIGHT  &kp LA(SPACE)    &trans
-&bt BT_CLR_ALL  &out OUT_TOG  &bootloader   &trans            &trans             &trans    &trans  &kp PLUS        &kp LBRC      &kp RBRC   &trans           &trans
+&bt BT_CLR      &trans        &kp F2        &kp F5            &kp F4             &trans    &trans  &kp HOME        &kp UP_ARROW      &kp END            &kp PRINTSCREEN  &kp DEL
+&studio_unlock  &kp LEFT_GUI  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT     &trans    &trans  &kp LEFT_ARROW  &kp DOWN          &kp RIGHT          &kp LA(SPACE)    &trans
+&bt BT_CLR_ALL  &out OUT_TOG  &bootloader   &trans            &trans             &trans    &trans  &trans          &kp LEFT_BRACKET  &kp RIGHT_BRACKET  &trans           &trans
                                             &trans            &kp LC(BACKSPACE)  &mo 3     &trans  &trans
             >;
         };
@@ -149,7 +149,7 @@
             bindings = <
 &trans  &trans   &kp F1  &kp F2   &kp F3   &kp F4     &bt BT_SEL 0  &bt BT_SEL 1      &bt BT_SEL 2       &bt BT_SEL 3     &bt BT_SEL 4  &bt BT_CLR
 &trans  &kp DEL  &kp F5  &kp F6   &kp F7   &kp F8     &out OUT_TOG  &kp K_PLAY_PAUSE  &kp C_VOLUME_DOWN  &kp C_VOLUME_UP  &kp C_MUTE    &kp LALT
-&trans  &trans   &kp F9  &kp F10  &kp F11  &kp F12    &trans        &trans            &trans             &trans           &trans        &to 0
+&trans  &trans   &kp F9  &kp F10  &kp F11  &kp F12    &trans        &trans            &kp LEFT_BRACE     &kp RIGHT_BRACE  &trans        &to 0
                          &trans   &trans   &trans     &trans        &trans
             >;
         };
