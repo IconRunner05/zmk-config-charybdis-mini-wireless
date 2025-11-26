@@ -83,6 +83,11 @@
             bindings = <&kp BACKSPACE>;
             key-positions = <16 14>;
         };
+
+        Emoji {
+            bindings = <&kp LG(SEMICOLON)>;
+            key-positions = <36 22>;
+        };
     };
 
     behaviors {
