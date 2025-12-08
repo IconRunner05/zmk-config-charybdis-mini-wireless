@@ -48,6 +48,11 @@
             bindings = <&kp LEFT_GUI>;
             key-positions = <36 39>;
         };
+
+        Enter {
+            bindings = <&kp ENTER>;
+            key-positions = <16 19>;
+        };
     };
 
     behaviors {
