@@ -53,6 +53,11 @@
             bindings = <&kp ENTER>;
             key-positions = <16 19>;
         };
+
+        ToggleMacWin {
+            bindings = <&tog 1>;
+            key-positions = <24 36>;
+        };
     };
 
     behaviors {
@@ -93,7 +98,16 @@
 &kp TAB       &kp Q  &kp W  &kp E             &kp R  &kp T             &kp Y      &kp U            &kp I      &kp O    &kp P          &kp DELETE
 &kp ESCAPE    &kp A  &kp S  &kp D             &kp F  &kp G             &kp H      &kp J            &kp K      &kp L    &kp SEMICOLON  &kp APOS
 &kp LEFT_GUI  &kp Z  &kp X  &kp C             &kp V  &kp B             &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
-                            &kp LEFT_CONTROL  &mo 1  &kp LEFT_SHIFT    &kp SPACE  &lt 2 BACKSPACE
+                            &kp LEFT_CONTROL  &mo 2  &kp LEFT_SHIFT    &kp SPACE  &lt 3 BACKSPACE
+            >;
+        };
+
+        SwapCtrlGui {
+            bindings = <
+&trans            &trans  &trans  &trans        &trans  &trans    &trans  &trans  &trans  &trans  &trans  &trans
+&trans            &trans  &trans  &trans        &trans  &trans    &trans  &trans  &trans  &trans  &trans  &trans
+&kp LEFT_CONTROL  &trans  &trans  &trans        &trans  &trans    &trans  &trans  &trans  &trans  &trans  &trans
+                                  &kp LEFT_GUI  &trans  &trans    &trans  &trans
             >;
         };
 
@@ -101,7 +115,7 @@
             bindings = <
 &kp CAPSLOCK  &kp EXCLAMATION  &kp TILDE  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
 &trans        &kp QUESTION     &trans     &trans                &kp LS(ENTER)          &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp N0      &bt BT_SEL 1
-&trans        &mo 5            &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
+&trans        &mo 6            &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
                                           &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
             >;
         };
@@ -111,7 +125,7 @@
 &bt BT_CLR      &trans        &kp F2        &kp F5            &kp F4             &trans    &trans  &kp HOME        &kp UP_ARROW      &kp END            &kp PRINTSCREEN  &kp DEL
 &studio_unlock  &kp LEFT_GUI  &kp LEFT_ALT  &kp LEFT_CONTROL  &kp LEFT_SHIFT     &trans    &trans  &kp LEFT_ARROW  &kp DOWN          &kp RIGHT          &kp LA(SPACE)    &trans
 &bt BT_CLR_ALL  &out OUT_TOG  &bootloader   &trans            &trans             &trans    &trans  &trans          &kp LEFT_BRACKET  &kp RIGHT_BRACKET  &trans           &trans
-                                            &trans            &kp LC(BACKSPACE)  &mo 3     &trans  &trans
+                                            &trans            &kp LC(BACKSPACE)  &mo 4     &trans  &trans
             >;
         };
 
