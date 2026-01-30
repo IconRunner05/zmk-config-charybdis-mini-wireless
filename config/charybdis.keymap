@@ -115,7 +115,7 @@
             bindings = <
 &kp CAPSLOCK  &kp EXCLAMATION  &kp TILDE  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
 &trans        &kp QUESTION     &trans     &trans                &kp LS(ENTER)          &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp N0      &bt BT_SEL 1
-&trans        &mo 6            &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
+&trans        &mo 5            &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
                                           &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
             >;
         };
@@ -135,15 +135,6 @@
 &trans  &kp DEL  &kp F5     &kp F6     &kp F7     &kp F8     &out OUT_TOG  &kp K_PLAY_PAUSE  &kp C_VOLUME_DOWN  &kp C_VOLUME_UP  &kp C_MUTE    &kp LALT
 &trans  &trans   &mkp MCLK  &mkp RCLK  &mkp LCLK  &kp F12    &trans        &trans            &kp LEFT_BRACE     &kp RIGHT_BRACE  &trans        &to 0
                             &trans     &trans     &trans     &trans        &trans
-            >;
-        };
-
-        AUTO-MOUSE {
-            bindings = <
-&trans  &trans  &trans  &trans     &trans  &trans       &trans  &trans  &trans  &trans  &trans  &trans
-&trans  &trans  &trans  &trans     &trans  &trans       &trans  &trans  &trans  &trans  &trans  &trans
-&trans  &trans  &trans  &trans     &trans  &trans       &trans  &trans  &trans  &trans  &trans  &trans
-                        &mkp LCLK  &trans  &mkp RCLK    &trans  &trans
             >;
         };
 
