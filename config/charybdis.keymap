@@ -107,7 +107,7 @@
             bindings = <
 &kp TAB       &kp Q  &kp W  &kp E             &kp R  &kp T             &kp Y      &kp U            &kp I      &kp O    &kp P          &kp DELETE
 &kp ESCAPE    &kp A  &kp S  &kp D             &kp F  &kp G             &kp H      &kp J            &kp K      &kp L    &kp SEMICOLON  &kp APOS
-&kp LEFT_GUI  &kp Z  &kp X  &kp C             &kp V  &kp B             &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp NON_US_BACKSLASH
+&kp LEFT_GUI  &kp Z  &kp X  &kp C             &kp V  &kp B             &kp N      &kp M            &kp COMMA  &kp DOT  &kp FSLH       &kp BACKSLASH
                             &kp LEFT_CONTROL  &mo 2  &kp LEFT_SHIFT    &kp SPACE  &lt 3 BACKSPACE
             >;
         };
