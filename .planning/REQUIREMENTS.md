@@ -62,37 +62,35 @@
 
 ## Traceability
 
-*Populated during roadmap creation.*
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BUILD-01 | — | Pending |
-| BUILD-02 | — | Pending |
-| BUILD-03 | — | Pending |
-| DRVR-01 | — | Pending |
-| DRVR-02 | — | Pending |
-| DRVR-03 | — | Pending |
-| DTS-01 | — | Pending |
-| DTS-02 | — | Pending |
-| DTS-03 | — | Pending |
-| KCONF-01 | — | Pending |
-| KCONF-02 | — | Pending |
-| KCONF-03 | — | Pending |
-| HW-01 | — | Pending |
-| HW-02 | — | Pending |
-| HW-03 | — | Pending |
-| HW-04 | — | Pending |
-| HW-05 | — | Pending |
-| HW-06 | — | Pending |
-| HW-07 | — | Pending |
-| HW-08 | — | Pending |
-| STAB-01 | — | Pending |
+| BUILD-01 | Phase 1 | Pending |
+| BUILD-02 | Phase 1 | Pending |
+| BUILD-03 | Phase 1 | Pending |
+| DRVR-01 | Phase 2 | Pending |
+| DRVR-02 | Phase 2 | Pending |
+| DRVR-03 | Phase 2 | Pending |
+| DTS-01 | Phase 1 | Pending |
+| DTS-02 | Phase 1 | Pending |
+| DTS-03 | Phase 1 | Pending |
+| KCONF-01 | Phase 1 | Pending |
+| KCONF-02 | Phase 1 | Pending |
+| KCONF-03 | Phase 1 | Pending |
+| HW-01 | Phase 3 | Pending |
+| HW-02 | Phase 3 | Pending |
+| HW-03 | Phase 3 | Pending |
+| HW-04 | Phase 3 | Pending |
+| HW-05 | Phase 3 | Pending |
+| HW-06 | Phase 3 | Pending |
+| HW-07 | Phase 3 | Pending |
+| HW-08 | Phase 3 | Pending |
+| STAB-01 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 21 total
-- Mapped to phases: 0 (roadmap not yet created)
-- Unmapped: 21 ⚠️
+- Mapped to phases: 21/21
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-18*
-*Last updated: 2026-03-18 after initial definition*
+*Last updated: 2026-03-18 after roadmap creation*
