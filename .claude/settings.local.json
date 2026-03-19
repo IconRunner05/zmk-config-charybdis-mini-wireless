@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude --dangerously-skip-permissions)",
+      "Skill(gsd:map-codebase)",
+      "Skill(gsd:map-codebase:*)",
+      "Bash(wc -l \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.planning/codebase/\"*.md)",
+      "Bash(grep -E '\\(sk-[a-zA-Z0-9]{20,}|sk_live_[a-zA-Z0-9]+|sk_test_[a-zA-Z0-9]+|ghp_[a-zA-Z0-9]{36}|gho_[a-zA-Z0-9]{36}|glpat-[a-zA-Z0-9_-]+|AKIA[A-Z0-9]{16}|xox[baprs]-[a-zA-Z0-9-]+|-----BEGIN.*PRIVATE KEY|eyJ[a-zA-Z0-9_-]+\\\\.eyJ[a-zA-Z0-9_-]+\\\\.\\)' \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.planning/codebase/\"*.md)",
+      "Bash(node \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: map existing codebase\" --files \".planning/codebase/STACK.md\" \".planning/codebase/INTEGRATIONS.md\" \".planning/codebase/ARCHITECTURE.md\" \".planning/codebase/STRUCTURE.md\" \".planning/codebase/CONVENTIONS.md\" \".planning/codebase/TESTING.md\" \".planning/codebase/CONCERNS.md\")",
+      "Bash(node \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: initialize project\" --files \".planning/PROJECT.md\")",
+      "Bash(node \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"chore: add project config\" --files \".planning/config.json\")",
+      "Bash(wc -l \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.planning/research/\"*.md)",
+      "Bash(node \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: research ZMK Zephyr 4.x migration\" --files \".planning/research/STACK.md\" \".planning/research/FEATURES.md\" \".planning/research/ARCHITECTURE.md\" \".planning/research/PITFALLS.md\" \".planning/research/SUMMARY.md\")",
+      "Bash(node \"/Users/sddenny05/Documents/Charybdis Mini ZMK Firmware/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: create v1 roadmap\" --files \".planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md\")",
+      "WebSearch",
+      "Skill(gsd:plan-phase)",
+      "Skill(gsd:plan-phase:*)"
+    ]
+  }
+}
