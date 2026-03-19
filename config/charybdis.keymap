@@ -6,26 +6,13 @@
 #include <dt-bindings/zmk/keys.h>
 #include <dt-bindings/zmk/outputs.h>
 #include <dt-bindings/zmk/pointing.h>
+/* Previously had inline trackball_listener definition - now in split_input_common.dtsi */
+/* Previously: device = <&trackball>; - now: device = <&trackball_split>; */
+/* Previously: input-processors and scroll config - now in split_input_common.dtsi */
 
 #define U_TAPPING_TERM 200
 
 / {
-    trackball_listener {
-        compatible = "zmk,input-listener";
-        device = <&trackball>;
-        input-processors = <&zip_xy_scaler 1 2>;
-
-        // Decrease sensitivity
-
-        scroll {
-            layers = <5>; // SCROLL
-            input-processors =
-                <&zip_xy_scaler 1 20>,
-                <&zip_xy_to_scroll_mapper>,
-                <&zip_scroll_transform (INPUT_TRANSFORM_Y_INVERT)>;
-        };
-    };
-
     combos {
         compatible = "zmk,combos";
 

@@ -1,1 +1,4 @@
 build/
+KNOWN_WORKING_REPO/
+.claude/
+.planning/
