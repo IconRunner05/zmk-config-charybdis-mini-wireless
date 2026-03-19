@@ -67,6 +67,13 @@
         StickyCtrlShift {
             bindings = <&sk LC(LEFT_SHIFT)>;
             key-positions = <36 39>;
+            layers = <0>;
+        };
+
+        StickyCmdShift {
+            bindings = <&kp LG(LEFT_SHIFT)>;
+            key-positions = <36 39>;
+            layers = <1>;
         };
     };
 
