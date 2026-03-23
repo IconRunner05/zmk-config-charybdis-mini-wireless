@@ -2,8 +2,8 @@ omanifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
-    - name: badjeff
-      url-base: https://github.com/badjeff
+    - name: efogdev
+      url-base: https://github.com/efogdev
   projects:
     - name: zmk
       remote: zmkfirmware
