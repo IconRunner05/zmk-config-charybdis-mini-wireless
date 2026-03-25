@@ -7,13 +7,18 @@
 #include <dt-bindings/zmk/outputs.h>
 #include <dt-bindings/zmk/pointing.h>
 
+#include <input/processors/report_rate_limit.dtsi>
+
+
 #define U_TAPPING_TERM 200
 
 / {
     trackball_listener {
         compatible = "zmk,input-listener";
         device = <&trackball>;
-        input-processors = <&zip_xy_scaler 1 2>;
+        input-processors =
+        <&zip_report_rate_limit 16>,  /* noise gate — first in chain */
+        <&zip_xy_scaler 1 2>;
 
         // Decrease sensitivity
 
