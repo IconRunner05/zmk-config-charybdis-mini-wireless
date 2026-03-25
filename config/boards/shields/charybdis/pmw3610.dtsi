@@ -46,7 +46,7 @@
         irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
         /* Use this value to change the trackball sensitivity */
-        cpi = <800>;
+        cpi = <900>;
 
         /* The below settings work best for the Charybdis sensor orientation */
             swap-xy;
