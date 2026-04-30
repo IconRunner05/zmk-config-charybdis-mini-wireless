@@ -40,9 +40,10 @@
     trackball_listener {
         compatible = "zmk,input-listener";
         device = <&trackball>;
+
+        /* noise gate — first in chain */
         input-processors =
             <&zip_ble_report_rate_limit 8>,
-            /* noise gate — first in chain */,
             <&zip_xy_scaler 1 2>;
 
         // Decrease sensitivity
