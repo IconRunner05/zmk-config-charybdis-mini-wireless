@@ -42,9 +42,8 @@
         device = <&trackball>;
 
         /* noise gate — first in chain */
-        input-processors =
-            <&zip_ble_report_rate_limit 8>,
-            <&zip_xy_scaler 1 2>;
+
+        input-processors = <&zip_ble_report_rate_limit 8>, <&zip_xy_scaler 1 2>;
 
         // Decrease sensitivity
 
@@ -138,6 +137,16 @@
             hold-trigger-key-positions = <40>;
             tapping-term-ms = <100>;
         };
+
+        u_mt2: u_mt2 {
+            compatible = "zmk,behavior-hold-tap";
+            label = "U_MT2";
+            #binding-cells = <2>;
+            flavor = "tap-preferred";
+            bindings = <&kp>, <&kp>;
+
+            tapping-term-ms = <100>;
+        };
     };
 
     keymap {
@@ -163,10 +172,10 @@
 
         NUM {
             bindings = <
-&kp CAPSLOCK  &kp EXCLAMATION  &kp TILDE  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
-&trans        &kp QUESTION     &trans     &mo 5                 &kp LS(ENTER)          &trans    &kp EQUAL                &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp N0      &bt BT_SEL 1
-&trans        &mo 5            &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                   &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
-                                          &trans                &trans                 &trans    &u_mt RIGHT_SHIFT ENTER  &kp BACKSPACE
+&kp CAPSLOCK  &kp EXCLAMATION  &kp TILDE  &kp LEFT_PARENTHESIS  &kp RIGHT_PARENTHESIS  &trans    &kp MINUS                 &kp N7         &kp N8        &kp N9        &kp HOME    &bt BT_SEL 0
+&trans        &kp QUESTION     &trans     &mo 5                 &kp LS(ENTER)          &trans    &kp EQUAL                 &kp NUMBER_4   &kp N5        &kp NUMBER_6  &kp N0      &bt BT_SEL 1
+&trans        &mo 5            &mkp MCLK  &mkp RCLK             &mkp LCLK              &trans    &kp N0                    &kp NUMBER_1   &kp NUMBER_2  &kp NUMBER_3  &kp PERIOD  &bt BT_SEL 2
+                                          &trans                &trans                 &trans    &u_mt2 RIGHT_SHIFT ENTER  &kp BACKSPACE
             >;
         };
 
