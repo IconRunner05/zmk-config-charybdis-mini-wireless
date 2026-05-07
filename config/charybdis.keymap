@@ -145,7 +145,7 @@
             flavor = "tap-preferred";
             bindings = <&kp>, <&kp>;
 
-            tapping-term-ms = <100>;
+            tapping-term-ms = <200>;
         };
     };
 
