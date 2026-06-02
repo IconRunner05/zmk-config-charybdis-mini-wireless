@@ -177,7 +177,7 @@ left: ## Build left half  (charybdis_left → charybdis_left-nice_nano_v2-zmk.uf
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
 		-d /workspace/build/charybdis_left \
-		-b nice_nano_v2 \
+		-b 'nice_nano@2//zmk' \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
 		-DSHIELD="charybdis_left"
@@ -197,7 +197,7 @@ right: ## Build right half (charybdis_right + ZMK Studio → charybdis_right-nic
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
 		-d /workspace/build/charybdis_right \
-		-b nice_nano_v2 \
+		-b 'nice_nano@2//zmk' \
 		-S "studio-rpc-usb-uart" \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
@@ -219,7 +219,7 @@ reset: ## Build settings_reset flasher (settings_reset-nice_nano_v2-zmk.uf2)
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
 		-d /workspace/build/settings_reset \
-		-b nice_nano_v2 \
+		-b 'nice_nano@2//zmk' \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
 		-DSHIELD="settings_reset"
