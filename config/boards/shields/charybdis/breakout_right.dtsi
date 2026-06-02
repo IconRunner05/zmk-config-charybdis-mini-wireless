@@ -1,0 +1,80 @@
+/*
+ * RIGHT-half breakout board pad map.
+ *
+ * Edit the right-hand column of each table to match the silkscreen labels
+ * on YOUR breakout board. Edit the pin number to match the nice!nano v2
+ * pro_micro pin that the breakout pad is wired to.
+ *
+ *   Macro name      pro_micro pin   (← matrix role)
+ *   ------------    -------------    ---------------
+ *   R_PAD_R1        21               row 0   (TAB row)
+ *   R_PAD_R2        18               row 1   (ESC row)
+ *   R_PAD_R3         5               row 2   (LGUI/Z row)     ⚠ shared w/ EXT_POWER ctrl
+ *   R_PAD_R4         4               row 3   (thumbs)         ⚠ shared w/ PMW3610 CS
+ *   R_PAD_R5         9               row 4   (number row)
+ *
+ *   R_PAD_C1        19               col 0
+ *   R_PAD_C2        20               col 1
+ *   R_PAD_C3        10               col 2
+ *   R_PAD_C4         6               col 3
+ *   R_PAD_C5         7               col 4
+ *   R_PAD_C6         8               col 5
+ *
+ * Rename the R_PAD_* identifiers to match the silkscreen if useful
+ * (e.g. R_PAD_J3, R_PAD_TOP_LEFT). If you rename, sweep the references
+ * in MATRIX_ROW*_PIN below and in charybdis_right.overlay col-gpios.
+ *
+ * ⚠ Pin sharing on right half (mirrors master config):
+ *   pro_micro 4 (P0.20) = matrix row 3 (thumbs)     AND PMW3610 cs-gpios
+ *   pro_micro 5 (P0.13) = matrix row 2 (LGUI/Z row) AND EXT_POWER control
+ *
+ * PMW3610 IRQ is on raw &gpio0 6 (P0.06 = pro_micro 1, D1) per
+ * pmw3610.dtsi — NOT pro_micro 6 (P0.24). No col-3 conflict.
+ */
+
+/* ---- Pad → pro_micro pin (RIGHT half) ------------------------------ */
+#define R_PAD_R1   21
+#define R_PAD_R2   18
+#define R_PAD_R3    5
+#define R_PAD_R4    4
+#define R_PAD_R5    9
+
+#define R_PAD_C1   19
+#define R_PAD_C2   20
+#define R_PAD_C3   10
+#define R_PAD_C4    6
+#define R_PAD_C5    7
+#define R_PAD_C6    8
+
+/* ---- Trackball (PMW3610) pad → nrf gpio (RIGHT half) --------------- *
+ * Consumed by pmw3610.dtsi. SPI pinctrl uses NRF_PSEL(signal, port, pin)
+ * so both port and pin must be literal numbers. CS / IRQ use the raw
+ * phandle <&gpio0 N ...>; port is locked to gpio0 in pmw3610.dtsi.
+ *
+ * If your breakout wires the trackball through port-1 pins (P1.x):
+ *   - Set the *_PORT macro below to 1, AND
+ *   - Hand-edit cs-gpios / irq-gpios in pmw3610.dtsi from &gpio0 to &gpio1.
+ *
+ *   Macro                 nrf port,pin   pro_micro equiv      role
+ *   ----------------      ------------   -----------------    ----
+ *   R_PAD_TB_SCK_*        P0.08          pro_micro 0 (D0)     SPI clock
+ *   R_PAD_TB_MOSI_*       P0.17          pro_micro 3 (D3)     SPI MOSI/MISO (3-wire)
+ *   R_PAD_TB_CS_PIN       P0.20          pro_micro 4 (D4)     chip select  ⚠ shared w/ row 3 (thumbs)
+ *   R_PAD_TB_IRQ_PIN      P0.06          pro_micro 1 (D1)     motion IRQ
+ */
+#define R_PAD_TB_SCK_PORT    0
+#define R_PAD_TB_SCK_PIN     8
+#define R_PAD_TB_MOSI_PORT   0
+#define R_PAD_TB_MOSI_PIN   17
+#define R_PAD_TB_CS_PIN     20
+#define R_PAD_TB_IRQ_PIN     6
+
+/* ---- Matrix row → pad (consumed by charybdis.dtsi) ----------------- *
+ * Shared dtsi references MATRIX_ROW{0..4}_PIN. Each side maps these to
+ * its own pad macros so left and right can diverge.
+ */
+#define MATRIX_ROW0_PIN   R_PAD_R1
+#define MATRIX_ROW1_PIN   R_PAD_R2
+#define MATRIX_ROW2_PIN   R_PAD_R3
+#define MATRIX_ROW3_PIN   R_PAD_R4
+#define MATRIX_ROW4_PIN   R_PAD_R5
