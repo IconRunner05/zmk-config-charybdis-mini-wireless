@@ -55,12 +55,14 @@
  *   - Set the *_PORT macro below to 1, AND
  *   - Hand-edit cs-gpios / irq-gpios in pmw3610.dtsi from &gpio0 to &gpio1.
  *
- *   Macro                 nrf port,pin   pro_micro equiv      role
- *   ----------------      ------------   -----------------    ----
- *   R_PAD_TB_SCK_*        P0.08          pro_micro 0 (D0)     SPI clock
- *   R_PAD_TB_MOSI_*       P0.17          pro_micro 3 (D3)     SPI MOSI/MISO (3-wire)
- *   R_PAD_TB_CS_PIN       P0.20          pro_micro 4 (D4)     chip select  ⚠ shared w/ row 3 (thumbs)
- *   R_PAD_TB_IRQ_PIN      P0.06          pro_micro 1 (D1)     motion IRQ
+ *   Macro                 nrf port,pin   pro_micro equiv      PMW3610 pad   role
+ *   ----------------      ------------   -----------------    -----------   ----
+ *   —                     —              VCC                  VCC           power
+ *   R_PAD_TB_SCK_*        P0.08          pro_micro 0 (D0)     SCLK          SPI clock
+ *   R_PAD_TB_MOSI_*       P0.17          pro_micro 3 (D3)     SDIO          SPI data (3-wire bidirectional)
+ *   R_PAD_TB_CS_PIN       P0.20          pro_micro 4 (D4)     NCS           chip select  ⚠ shared w/ row 3 (thumbs)
+ *   R_PAD_TB_IRQ_PIN      P0.06          pro_micro 1 (D1)     MOTION        motion IRQ (hw MISO pad repurposed)
+ *   —                     —              GND                  GND           ground
  */
 #define R_PAD_TB_SCK_PORT    0
 #define R_PAD_TB_SCK_PIN     8
