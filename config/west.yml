@@ -18,7 +18,7 @@ manifest:
       remote: badjeff
       revision: main
     - name: zmk-input-processor-report-rate-limit
-      url: https://github.com/IconRunner05/zmk-input-processor-report-rate-limit
+      remote: badjeff
       revision: main
   self:
     path: config
