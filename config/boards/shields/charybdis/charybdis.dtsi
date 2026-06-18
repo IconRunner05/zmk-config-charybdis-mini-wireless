@@ -1,6 +1,32 @@
 #include "charybdis-layouts.dtsi"
 #include <dt-bindings/zmk/matrix_transform.h>
 
+/*
+ * Matrix diode direction — single source of truth.
+ *
+ * Define CHARYBDIS_DIODE_COL2ROW to use col2row (anode→col, cathode→row).
+ * Comment it out (or #undef) to use row2col.
+ *
+ * The selected direction drives:
+ *   - kscan0 diode-direction string
+ *   - which side gets GPIO_PULL_DOWN (inputs/sensors only — pulls on
+ *     outputs are no-ops, so col-gpios in the per-side overlays carry
+ *     pulls unconditionally and are harmless when unused).
+ *
+ * Pull placement rule:
+ *   col2row → rows are inputs → pull-down on row-gpios
+ *   row2col → cols are inputs → pull-down on col-gpios (set in overlay)
+ */
+// #define CHARYBDIS_DIODE_COL2ROW
+
+#ifdef CHARYBDIS_DIODE_COL2ROW
+  #define CHARYBDIS_DIODE_DIR  "col2row"
+  #define CHARYBDIS_ROW_FLAGS  (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)
+#else
+  #define CHARYBDIS_DIODE_DIR  "row2col"
+  #define CHARYBDIS_ROW_FLAGS  (GPIO_ACTIVE_HIGH)
+#endif
+
 / {
 
     vbatt: vbatt {
@@ -37,12 +63,17 @@
         compatible = "zmk,kscan-gpio-matrix";
         label = "KSCAN";
 
-        diode-direction = "row2col";
+        diode-direction = CHARYBDIS_DIODE_DIR;
+		/*
+		 * Row pins come from the per-side breakout map
+		 * (breakout_left.dtsi / breakout_right.dtsi) via MATRIX_ROW*_PIN.
+		 * Edit the breakout file for your half — not this list.
+		 */
 		row-gpios
-			= <&pro_micro 18 GPIO_ACTIVE_HIGH>
-			, <&pro_micro 5 GPIO_ACTIVE_HIGH>
-			, <&pro_micro 4 GPIO_ACTIVE_HIGH>
-			, <&pro_micro 9 GPIO_ACTIVE_HIGH>
+			= <&pro_micro MATRIX_ROW0_PIN CHARYBDIS_ROW_FLAGS>
+			, <&pro_micro MATRIX_ROW1_PIN CHARYBDIS_ROW_FLAGS>
+			, <&pro_micro MATRIX_ROW2_PIN CHARYBDIS_ROW_FLAGS>
+			, <&pro_micro MATRIX_ROW3_PIN CHARYBDIS_ROW_FLAGS>
             ;
     };
 };

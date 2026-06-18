@@ -1,0 +1,49 @@
+/*
+ * LEFT-half breakout board pad map.
+ *
+ * Edit the right-hand column of each table to match the silkscreen labels
+ * on YOUR breakout board. Edit the pin number to match the nice!nano v2
+ * pro_micro pin that the breakout pad is wired to.
+ *
+ *   Macro name      pro_micro pin   (← matrix role)
+ *   ------------    -------------    ---------------
+ *   L_PAD_R1        21               row 0   (TAB row)
+ *   L_PAD_R2        18               row 1   (ESC row)
+ *   L_PAD_R3         5               row 2   (LGUI/Z row)
+ *   L_PAD_R4         4               row 3   (thumbs)
+ *   L_PAD_R5         9               row 4   (number row)
+ *
+ *   L_PAD_C1        19               col 0
+ *   L_PAD_C2        20               col 1
+ *   L_PAD_C3        10               col 2
+ *   L_PAD_C4         6               col 3
+ *   L_PAD_C5         7               col 4
+ *   L_PAD_C6         8               col 5
+ *
+ * Rename the L_PAD_* identifiers to match the silkscreen if useful
+ * (e.g. L_PAD_J3, L_PAD_TOP_LEFT). If you rename, sweep the references
+ * in MATRIX_ROW*_PIN below and in charybdis_left.overlay col-gpios.
+ */
+
+/* ---- Pad → pro_micro pin (LEFT half) ------------------------------- */
+#define L_PAD_R1   21
+#define L_PAD_R2   18
+#define L_PAD_R3    5
+#define L_PAD_R4    4
+#define L_PAD_R5    9
+
+#define L_PAD_C1   19
+#define L_PAD_C2   20
+#define L_PAD_C3   10
+#define L_PAD_C4    6
+#define L_PAD_C5    7
+#define L_PAD_C6    8
+
+/* ---- Matrix row → pad (consumed by charybdis.dtsi) ----------------- *
+ * Shared dtsi references MATRIX_ROW{0..4}_PIN. Each side maps these to
+ * its own pad macros so left and right can diverge.
+ */
+#define MATRIX_ROW0_PIN   L_PAD_R2
+#define MATRIX_ROW1_PIN   L_PAD_R3
+#define MATRIX_ROW2_PIN   L_PAD_R4
+#define MATRIX_ROW3_PIN   L_PAD_R5
