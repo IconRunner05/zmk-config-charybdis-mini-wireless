@@ -140,6 +140,11 @@
             bindings = <&bootloader>;
             key-positions = <43 44 45 46>;
         };
+
+        BT_Clear {
+            bindings = <&bt BT_CLR>;
+            key-positions = <19 20 21 22>;
+        };
     };
 
     behaviors {
@@ -208,7 +213,7 @@
         NAV {
             bindings = <
 &trans          &trans        &trans             &trans            &trans          &trans    &trans  &trans          &trans            &trans             &trans           &trans
-&bt BT_CLR      &trans        &kp F2             &kp F5            &kp F4          &trans    &trans  &kp HOME        &kp UP_ARROW      &kp END            &kp PRINTSCREEN  &kp DEL
+&trans          &trans        &kp F2             &kp F5            &kp F4          &trans    &trans  &kp HOME        &kp UP_ARROW      &kp END            &kp PRINTSCREEN  &kp DEL
 &studio_unlock  &kp LEFT_GUI  &kp LEFT_ALT       &kp LEFT_CONTROL  &kp LEFT_SHIFT  &trans    &trans  &kp LEFT_ARROW  &kp DOWN          &kp RIGHT          &kp LA(SPACE)    &trans
 &trans          &out OUT_TOG  &bootloader        &trans            &trans          &trans    &trans  &trans          &kp LEFT_BRACKET  &kp RIGHT_BRACKET  &trans           &trans
                 &trans        &kp LC(BACKSPACE)  &mo 4             &trans          &trans                            &trans            &trans             &trans
