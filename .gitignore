@@ -6,3 +6,4 @@ firmware/
 # West workspace remnants if accidentally created inside the repo
 .zmk-workspace/
 .west/
+.claude/

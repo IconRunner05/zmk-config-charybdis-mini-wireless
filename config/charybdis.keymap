@@ -45,8 +45,6 @@
 
         input-processors = <&zip_ble_report_rate_limit 8>, <&zip_xy_scaler 1 2>;
 
-        // Decrease sensitivity
-
         scroll {
             layers = <5>; // SCROLL
             input-processors =
