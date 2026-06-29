@@ -32,7 +32,12 @@ jobs:
       # config/charybdis.json (which does not exist) or the rotated DTS layout.
       # --keys-only: the 12 combos are global (active on every layer), so
       # drawing them overlays dendron lines across all layers; suppress them.
+      # NOTE: format is one shell token per keyboard — `name:'args'` with NO
+      # space after the colon and the value single-quoted. The reusable
+      # workflow runs `eval set -- "$draw_args"` then splits each token on the
+      # first colon; a space after the colon yields an EMPTY value and silently
+      # drops every flag (which is how combos leaked back onto the SVG).
       draw_args: |
-        charybdis: '-j "config/info.json" --keys-only'
+        charybdis:'-j config/info.json --keys-only'
       # [skip ci] keeps the auto-commit from re-triggering the firmware build.
       commit_message: "docs(keymap): re-render keymap-drawer diagram [skip ci]"
