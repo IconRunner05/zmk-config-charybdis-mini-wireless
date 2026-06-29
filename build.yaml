@@ -33,5 +33,26 @@ include:
     shield: charybdis_right
     snippet: zmk-usb-logging
     artifact-name: charybdis_right_debug
+    # Hang-hunt instrumentation (debug build ONLY; normal right build untouched).
+    # Symptom: right half (central) went unresponsive mid-session with NO reboot
+    # banner and NO fault dump -- a hang, not a crash-reset. Deferred logging
+    # never flushed because the CPU was stuck. Trigger unknown (random within a
+    # ~35s window), so this must run continuously and catch it live.
+    #   LOG_MODE_IMMEDIATE   - flush in-context; the last line before the hang is
+    #                          real, not stranded in the deferred buffer.
+    #   WATCHDOG + NRFX_WDT  - hardware reset on hang: auto-recovers the keyboard
+    #                          (no cable pull) AND prints a boot banner that
+    #                          timestamps roughly when it died.
+    #   THREAD_ANALYZER_AUTO - per-thread stack high-water every 2s. The LAST
+    #                          dump before silence is the lead: which thread's
+    #                          stack collapsed or stopped advancing (suspect BLE
+    #                          RX / split central). Tighten interval if needed.
+    cmake-args: >-
+      -DCONFIG_LOG_MODE_IMMEDIATE=y
+      -DCONFIG_WATCHDOG=y
+      -DCONFIG_NRFX_WDT=y
+      -DCONFIG_THREAD_ANALYZER=y
+      -DCONFIG_THREAD_ANALYZER_AUTO=y
+      -DCONFIG_THREAD_ANALYZER_AUTO_INTERVAL=2
   - board: nice_nano@2//zmk
     shield: settings_reset
