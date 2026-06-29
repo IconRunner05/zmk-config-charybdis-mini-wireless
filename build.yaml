@@ -19,5 +19,14 @@ include:
     shield: charybdis_right
     snippet: studio-rpc-usb-uart
     cmake-args: -DCONFIG_ZMK_STUDIO=y
+  # --- DEBUG build for the weekend-crash investigation ---
+  # Right half (central) with USB logging, NO Studio (Studio + logging fight over
+  # the same USB CDC console). Flash this .uf2 to the RIGHT half, tether via USB,
+  # run scripts/zmk_serial_debug.sh, and wait for the panic/fault dump.
+  # Remove this entry once diagnosed.
+  - board: nice_nano@2//zmk
+    shield: charybdis_right
+    cmake-args: -DCONFIG_ZMK_USB_LOGGING=y -DCONFIG_ZMK_LOG_LEVEL_DBG=y
+    artifact-name: charybdis_right_debug
   - board: nice_nano@2//zmk
     shield: settings_reset
