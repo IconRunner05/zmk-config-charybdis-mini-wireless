@@ -32,14 +32,19 @@ LOG_DIR="${0:A:h}/../logs"
 c_cyan="\033[1;36m"; c_green="\033[1;32m"; c_yellow="\033[1;33m"
 c_red="\033[1;31m"; c_reset="\033[0m"
 
-# Lines relegated to --verbose. Two reasons:
-#   1. Privacy: the DBG stream logs keycodes, key positions, binding names and a
-#      hexdump whose ASCII gutter contains the literal characters typed. Writing
-#      that to disk would make this a keylogger. Keep it OUT of the default file.
-#   2. Noise: trackball/mouse movement floods the log.
-# Connection state, BLE (dis)connect + reason codes, faults, panics, asserts,
-# errors and warnings are NOT matched here, so they always pass through.
-VERBOSE_ONLY_RE='apply_config: LISTENER INDEX|scale_val:|zmk_hid_mouse_|split_central_notify_func|peripheral_event_work_callback|position_state_changed_listener|position_state_down|zmk_keymap_apply_position_state|keymap_binding_(pressed|released)|set_layer_state|hid_listener_keycode|zmk_hid_keyboard|zmk_hid_register|zmk_hid_unregister|zmk_hid_implicit|zmk_hid_get_keyboard|combo|zmk_event_manager_handle_from|^[[:space:]]+([0-9a-f]{2} ){2}'
+# ALLOWLIST (not a denylist). The default mode passes ONLY lines that match this
+# pattern; everything else is dropped. This is deliberate:
+#   1. Privacy: the DBG firehose logs HID keycodes, key positions, matrix
+#      row/col, binding names and a hexdump of typed characters. A denylist is
+#      whack-a-mole -- every new firmware debug category leaks more. An allowlist
+#      can only ever emit the categories below, so key data can never slip in.
+#   2. Signal: for a crash/disconnect hunt we only want connection state and
+#      faults, which are logged at <inf>/<wrn>/<err> plus a few stable markers.
+# To see the full stream (with keystrokes), run with -v/--verbose.
+#
+# NOTE: matches "Connected"/"Disconnected" (capital, ZMK's wording) but NOT bare
+# "connect", so the key-spam line "No connection for passkey entry" is excluded.
+KEEP_RE='<inf>|<wrn>|<err>|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
@@ -82,7 +87,7 @@ echo "  Logfile: ${c_green}$LOG_FILE${c_reset}"
 if [ "$VERBOSE" -eq 1 ]; then
   echo "  Filter:  ${c_red}OFF -- verbose: logs keystrokes/positions (keylogger!)${c_reset}"
 else
-  echo "  Filter:  ${c_green}on -- key/mouse data dropped; connection+crash only${c_reset}"
+  echo "  Filter:  ${c_green}allowlist -- connection+crash only; all key/mouse data dropped${c_reset}"
 fi
 echo "${c_cyan}=================================================================${c_reset}"
 echo "  Watch for:"
@@ -112,5 +117,7 @@ echo "${c_green}--- streaming (Ctrl-C to stop) ---${c_reset}"
 if [ "$VERBOSE" -eq 1 ]; then
   cat "$PORT" | tee -a "$LOG_FILE"
 else
-  cat "$PORT" | grep --line-buffered -vE "$VERBOSE_ONLY_RE" | tee -a "$LOG_FILE"
+  # Allowlist: keep only connection/crash lines. Case-sensitive on purpose --
+  # case-insensitive would let "PHY" match "physical" in the kscan spam.
+  cat "$PORT" | grep --line-buffered -E "$KEEP_RE" | tee -a "$LOG_FILE"
 fi
