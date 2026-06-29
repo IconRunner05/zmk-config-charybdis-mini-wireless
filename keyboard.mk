@@ -13,8 +13,13 @@
 #   That single line is honoured by both the local build and CI.
 # =============================================================================
 
-# ZMK board id (the MCU module). Both halves use the same board.
+# Board id used in the .uf2 filename (artifact naming only).
 BOARD        ?= nice_nano_v2
+
+# Board id passed to `west build -b`. Usually the same as BOARD, but the new
+# ZMK hardware-model targets differ (e.g. nice_nano@2//zmk builds, yet the
+# artifact is still named nice_nano_v2). Defaults to BOARD when unset.
+BUILD_BOARD  ?= $(BOARD)
 
 # Shield base name. The split halves are <base>_left / <base>_right.
 SHIELD_BASE  ?= charybdis

@@ -183,7 +183,7 @@ left: ## Build left half  (LEFT_SHIELD → LEFT_UF2, see keyboard.mk)
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
 		-d /workspace/build/$(LEFT_SHIELD) \
-		-b $(BOARD) \
+		-b $(BUILD_BOARD) \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
 		-DSHIELD="$(LEFT_SHIELD)"
@@ -203,7 +203,7 @@ right: ## Build right half (RIGHT_SHIELD + ZMK Studio → RIGHT_UF2, see keyboar
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
 		-d /workspace/build/$(RIGHT_SHIELD) \
-		-b $(BOARD) \
+		-b $(BUILD_BOARD) \
 		-S "studio-rpc-usb-uart" \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
@@ -225,7 +225,7 @@ reset: ## Build settings_reset flasher (RESET_UF2, see keyboard.mk)
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
 		-d /workspace/build/$(RESET_SHIELD) \
-		-b $(BOARD) \
+		-b $(BUILD_BOARD) \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
 		-DSHIELD="$(RESET_SHIELD)"
