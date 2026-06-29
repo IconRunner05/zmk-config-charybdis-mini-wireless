@@ -47,15 +47,17 @@ include:
     #                          enabled in the nRF52840 DT); do NOT also force
     #                          CONFIG_NRFX_WDT -- it's a select-only symbol and
     #                          assigning it via -D fails Kconfig.
-    #   THREAD_ANALYZER_AUTO - per-thread stack high-water every 2s. The LAST
+    #   THREAD_ANALYZER_AUTO - per-thread stack high-water every 5s. The LAST
     #                          dump before silence is the lead: which thread's
     #                          stack collapsed or stopped advancing (suspect BLE
-    #                          RX / split central). Tighten interval if needed.
+    #                          RX / split central). 5s is the Kconfig minimum
+    #                          (valid range [5, 3600]); lower values warn, and
+    #                          the build aborts on Kconfig warnings.
     cmake-args: >-
       -DCONFIG_LOG_MODE_IMMEDIATE=y
       -DCONFIG_WATCHDOG=y
       -DCONFIG_THREAD_ANALYZER=y
       -DCONFIG_THREAD_ANALYZER_AUTO=y
-      -DCONFIG_THREAD_ANALYZER_AUTO_INTERVAL=2
+      -DCONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5
   - board: nice_nano@2//zmk
     shield: settings_reset
