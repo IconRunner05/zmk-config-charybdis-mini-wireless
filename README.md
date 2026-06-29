@@ -69,9 +69,31 @@ You can also compile individual targets to save time:
 
 ---
 
+## Customizing the Keyboard
+
+The two things most people want to change live in single, well-marked places:
+
+### Device name (Bluetooth / USB)
+Set it once in [`config/charybdis.conf`](config/charybdis.conf):
+```ini
+CONFIG_ZMK_KEYBOARD_NAME="Charybdis 4x6"   # max 16 characters
+```
+This conf is shared by both halves and is read by **both** the local build and the GitHub Actions CI, so it is the single source of truth. (It is intentionally *not* in the repo root — CI only reads files under `config/`.)
+
+### Board, shields, and firmware filenames
+Set these once in [`keyboard.mk`](keyboard.mk) at the repo root:
+```makefile
+BOARD       ?= nice_nano_v2       # board id used in the .uf2 filename
+BUILD_BOARD ?= nice_nano@2//zmk   # board id passed to `west build -b`
+SHIELD_BASE ?= charybdis          # halves are <base>_left / <base>_right
+```
+The `.uf2` output names are derived from these. Note this branch builds against the ZMK hardware-model target (`nice_nano@2//zmk`) while still naming the artifact `nice_nano_v2` — hence the two separate board knobs. Run `make help` to see the resolved values.
+
+---
+
 ## Configuring Build Output Locations
 
-The build script saves compiled `.uf2` firmware files to two locations. You can configure these target directories directly in the `Makefile` under the **Paths** section (around lines 48-54):
+The build script saves compiled `.uf2` firmware files to two locations. You can configure these target directories directly in the `Makefile` under the **Paths** section:
 
 ```makefile
 # Staging dirs on the host: space-free, Docker bind-mount safe
