@@ -1,7 +1,7 @@
 if SHIELD_CHARYBDIS_RIGHT
 
-config ZMK_KEYBOARD_NAME
-	default "Charybdis"
+# ZMK_KEYBOARD_NAME is set in config/charybdis.conf (single source, shared by
+# both halves and honoured by CI). No default here so there is one place to edit.
 
 config ZMK_SPLIT_BLE_ROLE_CENTRAL
 	default y

@@ -139,9 +139,30 @@ The PMW3610 trackball behaviour is configured by the input-processor chain in [`
 
 ---
 
+## Customizing the Keyboard
+
+The two things most people want to change live in single, well-marked places:
+
+### Device name (Bluetooth / USB)
+Set it once in [`config/charybdis.conf`](config/charybdis.conf):
+```ini
+CONFIG_ZMK_KEYBOARD_NAME="Charybdis Mini"   # max 16 characters
+```
+This conf is shared by both halves and is read by **both** the local build and the GitHub Actions CI, so it is the single source of truth. (It is intentionally *not* in the repo root — CI only reads files under `config/`.)
+
+### Board, shields, and firmware filenames
+Set these once in [`keyboard.mk`](keyboard.mk) at the repo root:
+```makefile
+BOARD       ?= nice_nano_v2   # ZMK board id
+SHIELD_BASE ?= charybdis      # halves are <base>_left / <base>_right
+```
+The `.uf2` output names (`charybdis_left-nice_nano_v2-zmk.uf2`, …) are derived from these — change `BOARD` or `SHIELD_BASE` and every `make` target and output filename follows. Run `make help` to see the resolved board and shields.
+
+---
+
 ## Configuring Build Output Locations
 
-The build script saves compiled `.uf2` firmware files to two locations. You can configure these target directories directly in the `Makefile` under the **Paths** section (around lines 48-54):
+The build script saves compiled `.uf2` firmware files to two locations. You can configure these target directories directly in the `Makefile` under the **Paths** section:
 
 ```makefile
 # Staging dirs on the host: space-free, Docker bind-mount safe

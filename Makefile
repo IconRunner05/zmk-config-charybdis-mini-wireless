@@ -33,6 +33,11 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+# ─── Keyboard knobs ─────────────────────────────────────────────────────────
+# Board, shields and derived .uf2 names live in keyboard.mk at the repo root.
+# (Device name is in config/charybdis.conf — see keyboard.mk for why.)
+include $(dir $(lastword $(MAKEFILE_LIST)))keyboard.mk
+
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
 # Named Docker volume for the west workspace.
@@ -110,11 +115,12 @@ help: ## Show this help
 	@echo ""
 	@echo "  ZMK Charybdis Mini Wireless — Local Build"
 	@echo "  ==========================================="
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "  Volume    : $(WORKSPACE_VOL)  (docker volume)"
 	@echo "  Firmware  : $(FIRMWARE_DIR)"
+	@echo "  Board     : $(BOARD)  (shields: $(LEFT_SHIELD), $(RIGHT_SHIELD), $(RESET_SHIELD))"
 	@echo "  Image     : $(ZMK_IMAGE)"
 	@echo ""
 
@@ -168,66 +174,66 @@ build: left right reset ## Build all three firmware targets
 	@$(MAKE) --no-print-directory firmware
 	@echo ""
 
-left: ## Build left half  (charybdis_left → charybdis_left-nice_nano_v2-zmk.uf2)
+left: ## Build left half  (LEFT_SHIELD → LEFT_UF2, see keyboard.mk)
 	$(call check_init)
 	$(call sync_config)
 	@echo ""
-	@echo "→ Building charybdis_left"
+	@echo "→ Building $(LEFT_SHIELD)"
 	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
-		-d /workspace/build/charybdis_left \
-		-b nice_nano_v2 \
+		-d /workspace/build/$(LEFT_SHIELD) \
+		-b $(BOARD) \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
-		-DSHIELD="charybdis_left"
-	$(DOCKER_CP) cp /workspace/build/charybdis_left/zephyr/zmk.uf2 \
-		/firmware/charybdis_left-nice_nano_v2-zmk.uf2
-	@cp "$(FIRMWARE_STAGE)/charybdis_left-nice_nano_v2-zmk.uf2" \
-		"$(FIRMWARE_DIR)/charybdis_left-nice_nano_v2-zmk.uf2"
-	@echo "✓ Left → $(FIRMWARE_DIR)/charybdis_left-nice_nano_v2-zmk.uf2"
+		-DSHIELD="$(LEFT_SHIELD)"
+	$(DOCKER_CP) cp /workspace/build/$(LEFT_SHIELD)/zephyr/zmk.uf2 \
+		/firmware/$(LEFT_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(LEFT_UF2)" \
+		"$(FIRMWARE_DIR)/$(LEFT_UF2)"
+	@echo "✓ Left → $(FIRMWARE_DIR)/$(LEFT_UF2)"
 	@echo ""
 
-right: ## Build right half (charybdis_right + ZMK Studio → charybdis_right-nice_nano_v2-zmk.uf2)
+right: ## Build right half (RIGHT_SHIELD + ZMK Studio → RIGHT_UF2, see keyboard.mk)
 	$(call check_init)
 	$(call sync_config)
 	@echo ""
-	@echo "→ Building charybdis_right (with studio-rpc-usb-uart + ZMK Studio)"
+	@echo "→ Building $(RIGHT_SHIELD) (with studio-rpc-usb-uart + ZMK Studio)"
 	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
-		-d /workspace/build/charybdis_right \
-		-b nice_nano_v2 \
+		-d /workspace/build/$(RIGHT_SHIELD) \
+		-b $(BOARD) \
 		-S "studio-rpc-usb-uart" \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
-		-DSHIELD="charybdis_right" \
+		-DSHIELD="$(RIGHT_SHIELD)" \
 		-DCONFIG_ZMK_STUDIO=y
-	$(DOCKER_CP) cp /workspace/build/charybdis_right/zephyr/zmk.uf2 \
-		/firmware/charybdis_right-nice_nano_v2-zmk.uf2
-	@cp "$(FIRMWARE_STAGE)/charybdis_right-nice_nano_v2-zmk.uf2" \
-		"$(FIRMWARE_DIR)/charybdis_right-nice_nano_v2-zmk.uf2"
-	@echo "✓ Right → $(FIRMWARE_DIR)/charybdis_right-nice_nano_v2-zmk.uf2"
+	$(DOCKER_CP) cp /workspace/build/$(RIGHT_SHIELD)/zephyr/zmk.uf2 \
+		/firmware/$(RIGHT_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(RIGHT_UF2)" \
+		"$(FIRMWARE_DIR)/$(RIGHT_UF2)"
+	@echo "✓ Right → $(FIRMWARE_DIR)/$(RIGHT_UF2)"
 	@echo ""
 
-reset: ## Build settings_reset flasher (settings_reset-nice_nano_v2-zmk.uf2)
+reset: ## Build settings_reset flasher (RESET_UF2, see keyboard.mk)
 	$(call check_init)
 	$(call sync_config)
 	@echo ""
-	@echo "→ Building settings_reset"
+	@echo "→ Building $(RESET_SHIELD)"
 	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
 	$(DOCKER_BUILD) west build \
 		-s /workspace/zmk/app \
-		-d /workspace/build/settings_reset \
-		-b nice_nano_v2 \
+		-d /workspace/build/$(RESET_SHIELD) \
+		-b $(BOARD) \
 		-- \
 		-DZMK_CONFIG=/workspace/config \
-		-DSHIELD="settings_reset"
-	$(DOCKER_CP) cp /workspace/build/settings_reset/zephyr/zmk.uf2 \
-		/firmware/settings_reset-nice_nano_v2-zmk.uf2
-	@cp "$(FIRMWARE_STAGE)/settings_reset-nice_nano_v2-zmk.uf2" \
-		"$(FIRMWARE_DIR)/settings_reset-nice_nano_v2-zmk.uf2"
-	@echo "✓ Reset → $(FIRMWARE_DIR)/settings_reset-nice_nano_v2-zmk.uf2"
+		-DSHIELD="$(RESET_SHIELD)"
+	$(DOCKER_CP) cp /workspace/build/$(RESET_SHIELD)/zephyr/zmk.uf2 \
+		/firmware/$(RESET_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(RESET_UF2)" \
+		"$(FIRMWARE_DIR)/$(RESET_UF2)"
+	@echo "✓ Reset → $(FIRMWARE_DIR)/$(RESET_UF2)"
 	@echo ""
 
 # ─── Cache Management ─────────────────────────────────────────────────────────
