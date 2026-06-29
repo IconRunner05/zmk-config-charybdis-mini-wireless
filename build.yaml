@@ -35,29 +35,32 @@ include:
     artifact-name: charybdis_right_debug
     # Hang-hunt instrumentation (debug build ONLY; normal right build untouched).
     # Symptom: right half (central) went unresponsive mid-session with NO reboot
-    # banner and NO fault dump -- a hang, not a crash-reset. Deferred logging
-    # never flushed because the CPU was stuck. Trigger unknown (random within a
-    # ~35s window), so this must run continuously and catch it live.
-    #   LOG_MODE_IMMEDIATE   - flush in-context; the last line before the hang is
-    #                          real, not stranded in the deferred buffer.
-    #   WATCHDOG             - hardware reset on hang: auto-recovers the keyboard
-    #                          (no cable pull) AND prints a boot banner that
-    #                          timestamps roughly when it died. WATCHDOG=y alone
-    #                          auto-selects the nordic nrfx driver (wdt0 is
-    #                          enabled in the nRF52840 DT); do NOT also force
-    #                          CONFIG_NRFX_WDT -- it's a select-only symbol and
-    #                          assigning it via -D fails Kconfig.
-    #   THREAD_ANALYZER_AUTO - per-thread stack high-water every 5s. The LAST
-    #                          dump before silence is the lead: which thread's
-    #                          stack collapsed or stopped advancing (suspect BLE
-    #                          RX / split central). 5s is the Kconfig minimum
-    #                          (valid range [5, 3600]); lower values warn, and
+    # banner and NO fault dump -- a hang, not a crash-reset. Trigger unknown
+    # (random within a ~35s window), so this runs continuously to catch it live.
+    #
+    # NOTE: an earlier attempt also set CONFIG_LOG_MODE_IMMEDIATE=y and
+    # CONFIG_WATCHDOG=y and BRICKED boot (dead on both USB and BLE, reset+revert
+    # required). Root cause: IMMEDIATE mode writes each log line synchronously
+    # inline over the USB CDC console; boot-time logs fire before USB enumerates,
+    # so the write blocks and init never completes -> no USB, no BLE. WATCHDOG=y
+    # alone is also inert here (ZMK never calls wdt_setup()/feeds it), so it gave
+    # no recovery benefit. Both removed. Keep deferred logging (the snippet
+    # default, which worked) -- on a true CPU hang the deferred drain thread also
+    # stalls, but THREAD_ANALYZER_AUTO still prints periodic snapshots up to ~5s
+    # before the hang, which is the data we actually need.
+    #
+    #   THREAD_ANALYZER_AUTO - per-thread stack high-water + CPU use every 5s.
+    #                          The LAST dump before silence is the lead: which
+    #                          thread's stack collapsed, stopped advancing, or is
+    #                          eating the CPU (suspect BLE RX / split central /
+    #                          PMW3610 trackball polling). 5s is the Kconfig
+    #                          minimum (range [5, 3600]); lower values warn and
     #                          the build aborts on Kconfig warnings.
     cmake-args: >-
-      -DCONFIG_LOG_MODE_IMMEDIATE=y
-      -DCONFIG_WATCHDOG=y
       -DCONFIG_THREAD_ANALYZER=y
       -DCONFIG_THREAD_ANALYZER_AUTO=y
       -DCONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5
+      -DCONFIG_THREAD_ANALYZER_USE_PRINTK=n
+      -DCONFIG_THREAD_RUNTIME_STATS=y
   - board: nice_nano@2//zmk
     shield: settings_reset
