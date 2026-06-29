@@ -33,5 +33,26 @@ include:
     shield: charybdis_right
     snippet: zmk-usb-logging
     artifact-name: charybdis_right_debug
+  # --- A/B TEST: rule out BLE slave latency as the trackball-lag cause ---
+  # Right half is the SPLIT central AND the host BLE link endpoint, so its
+  # CONFIG_BT_PERIPHERAL_PREF_* govern the trackball->host connection. The
+  # shared config/charybdis.conf sets LATENCY=30 (good for keyboard battery,
+  # suspected cause of intermittent pointer stutter: the central may skip up to
+  # 30 connection events when it thinks the link is idle).
+  #
+  # This entry rebuilds ONLY the right half with LATENCY=0 (one variable
+  # changed), via a cmake-arg override that wins over the .conf value -- same
+  # mechanism the studio entry above uses. config/charybdis.conf is left
+  # untouched so the baseline is unchanged and the test is reversible.
+  #
+  # Flash `charybdis_right_lat0.uf2` to the RIGHT half only (left half keeps the
+  # normal firmware). Use the trackball; if the lag is gone, latency was the
+  # cause -- make it permanent by lowering LATENCY in config/charybdis.conf and
+  # remove this entry. If lag persists, latency is exonerated; move to the
+  # force-awake (sensor) test, then RF.
+  - board: nice_nano@2//zmk
+    shield: charybdis_right
+    cmake-args: -DCONFIG_BT_PERIPHERAL_PREF_LATENCY=0
+    artifact-name: charybdis_right_lat0
   - board: nice_nano@2//zmk
     shield: settings_reset
