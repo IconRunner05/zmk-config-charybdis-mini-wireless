@@ -1,0 +1,38 @@
+name: Draw keymap
+
+# Re-renders keymap-drawer/charybdis.svg whenever the keymap or its physical
+# layout changes, then commits the updated SVG/YAML back to the branch.
+# Runs independently per branch — master and charybdis-full each render and
+# commit their own diagram from their own keymap + config/info.json.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - charybdis-full
+    paths:
+      - "config/*.keymap"
+      - "config/info.json"
+      - "config/boards/shields/charybdis/*.dtsi"
+      - "keymap_drawer.config.yaml"
+      - ".github/workflows/draw-keymap.yml"
+
+jobs:
+  draw:
+    uses: caksoylar/keymap-drawer/.github/workflows/draw-zmk.yml@main
+    permissions:
+      contents: write
+    with:
+      keymap_patterns: "config/charybdis.keymap"
+      config_path: "keymap_drawer.config.yaml"
+      output_folder: "keymap-drawer"
+      # Use the QMK-style physical layout in config/info.json — the same file
+      # keymap-editor (nickcoutsos) reads — instead of the auto-detected
+      # config/charybdis.json (which does not exist) or the rotated DTS layout.
+      # --keys-only: the combos are global (active on every layer), so drawing
+      # them overlays dendron lines across all layers; suppress them.
+      draw_args: |
+        charybdis: '-j "config/info.json" --keys-only'
+      # [skip ci] keeps the auto-commit from re-triggering the firmware build.
+      commit_message: "docs(keymap): re-render keymap-drawer diagram [skip ci]"

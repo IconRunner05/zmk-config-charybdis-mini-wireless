@@ -6,6 +6,15 @@ It features a robust local build environment running the exact same Docker image
 
 ---
 
+## Keymap
+
+![Charybdis keymap](keymap-drawer/charybdis.svg)
+
+> [!NOTE]
+> This diagram is generated automatically by [keymap-drawer](https://github.com/caksoylar/keymap-drawer) on every push that changes the keymap (see `.github/workflows/draw-keymap.yml`). The physical layout comes from `config/info.json` — the same file the [keymap-editor](https://nickcoutsos.github.io/keymap-editor/) web GUI reads. This is the `charybdis-full` layout; the `master` branch renders its own diagram from its own keymap.
+
+---
+
 ## Prerequisites
 
 Before building locally, ensure you have the following installed on your host system:

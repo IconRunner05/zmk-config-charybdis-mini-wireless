@@ -1,0 +1,26 @@
+# keymap-drawer rendering config
+# https://github.com/caksoylar/keymap-drawer
+#
+# Consumed by .github/workflows/draw-keymap.yml, which re-renders
+# keymap-drawer/charybdis.svg on every push that touches the keymap,
+# config/info.json (the same physical layout keymap-editor edits), or
+# the shield .dtsi files. To regenerate locally:
+#
+#   pip install keymap-drawer
+#   keymap -c keymap_drawer.config.yaml parse -z config/charybdis.keymap -c 6 \
+#       -o keymap-drawer/charybdis.yaml
+#   keymap -c keymap_drawer.config.yaml draw keymap-drawer/charybdis.yaml \
+#       -j config/info.json -o keymap-drawer/charybdis.svg
+
+parse_config:
+  # Layer names come straight from the keymap node names (BASE, NUM, ...).
+  # Keep mod-tap / layer-tap "hold" legends compact.
+  skip_binding_parsing: false
+
+draw_config:
+  # Adapt fill/stroke to the viewer's GitHub light/dark theme.
+  dark_mode: auto
+  # Draw keycap "sides" for a more physical look.
+  draw_key_sides: true
+  # Append ":" to each layer's header label.
+  append_colon_to_layer_header: true
