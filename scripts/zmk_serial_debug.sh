@@ -44,7 +44,10 @@ c_red="\033[1;31m"; c_reset="\033[0m"
 #
 # NOTE: matches "Connected"/"Disconnected" (capital, ZMK's wording) but NOT bare
 # "connect", so the key-spam line "No connection for passkey entry" is excluded.
-KEEP_RE='<inf>|<wrn>|<err>|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT'
+# Added: split CONNECTION markers (not the notify/event lines — those carry the
+# position bitmap), conn-param updates, and reboot/boot banners so a central
+# reset is visible. Bare "split"/"position"/"peripheral_event" stay OUT (key data).
+KEEP_RE='<inf>|<wrn>|<err>|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
@@ -104,20 +107,81 @@ echo ""
 # instead. This is one-way (read-only) capture -- exactly what log streaming
 # needs -- and `tee` mirrors to the terminal and the logfile at once. Opening
 # the port asserts DTR, which the ZMK USB CDC console needs before it streams.
+#
+# RECONNECT LOOP: the failure we're hunting drops the USB link (the central
+# re-enumerates / reboots, or the port glitches). A plain `cat | grep | tee`
+# exits on that EOF -- so the logger dies at the exact instant of the crash and
+# misses the `Disconnected (reason 0x..)` line and the `Booting Zephyr` banner.
+# Instead we loop: when the stream ends, mark it with a wall-clock stamp, wait
+# for the port to reappear, and reattach -- all into the SAME logfile. One
+# continuous capture across the crash; Ctrl-C still stops it.
 
-# Configure the port: set speed, 8N1, raw (no line processing), no echo.
-# CDC ACM ignores the baud rate but stty still wants a valid value.
-stty -f "$PORT" "$BAUD" cs8 -cstopb -parenb -echo raw 2>/dev/null \
-  || stty -f "$PORT" "$BAUD" 2>/dev/null \
-  || echo "${c_yellow}warning: stty could not configure $PORT (continuing anyway)${c_reset}"
+# -----------------------------------------------------------------------------
+# LOG LINE FORMAT (one event per line, fixed pipe-delimited columns)
+#
+#   2026-06-29 13:07:42 PDT | DEV  | [00:53:18.491,394] <inf> zmk: Endpoint ...
+#   2026-06-29 13:07:45 PDT | LOGR | stream ended (USB drop/reboot) — reconnecting
+#   └──── host local wall-clock ───┘   │       │   └─ payload
+#                                      │       └──── DEV  = device firmware line
+#                                      │              LOGR = this logger's own event
+#                                      └─ column separator " | " (split on it)
+#
+# Why this shape: the first column is always system-LOCAL wall-clock, so "it
+# crashed at 1:07pm" maps straight to a line. The DEV payload keeps the firmware's
+# own [uptime] <level> zmk: text intact, so one line traces host-time -> device
+# uptime -> log call site. Fixed columns + a stable " | " delimiter make it
+# greppable (`grep ' | LOGR '`), awk-friendly (`-F' | '`), and easy for an LLM to
+# parse. Local timezone is shown per line and also printed once in the banner.
+# -----------------------------------------------------------------------------
 
-echo "${c_green}--- streaming (Ctrl-C to stop) ---${c_reset}"
-# Ctrl-C tears down the pipeline; tee -a appends if the file already exists.
-# --line-buffered keeps grep flushing each line live (and before a crash).
-if [ "$VERBOSE" -eq 1 ]; then
-  cat "$PORT" | tee -a "$LOG_FILE"
-else
-  # Allowlist: keep only connection/crash lines. Case-sensitive on purpose --
-  # case-insensitive would let "PHY" match "physical" in the kscan spam.
-  cat "$PORT" | grep --line-buffered -E "$KEEP_RE" | tee -a "$LOG_FILE"
-fi
+# stamp_dev: strip the ANSI color codes the firmware emits (they corrupt the
+# logfile and confuse parsers) AND prefix each line with a local-time stamp.
+# Done in ONE perl process -- no per-line `date` fork -- so it keeps pace with
+# the full DBG firehose in verbose mode without overflowing the tty buffer.
+stamp_dev() {
+  perl -ne 'BEGIN { $| = 1; use POSIX qw(strftime); }
+            s/\e\[[0-9;]*m//g;                                   # strip ANSI SGR
+            chomp(my $line = $_);
+            print strftime("%Y-%m-%d %H:%M:%S %Z", localtime),
+                  " | DEV  | ", $line, "\n";'
+}
+
+# log_event: emit one structured LOGR line -- colored to the terminal, plain to
+# the logfile -- in the same column format as the device lines above.
+log_event() {  # $1 = terminal color, $2 = message
+  local ts; ts=$(date '+%Y-%m-%d %H:%M:%S %Z')
+  printf "${1}%s | LOGR | %s${c_reset}\n" "$ts" "$2"
+  printf  '%s | LOGR | %s\n' "$ts" "$2" >> "$LOG_FILE"
+}
+
+echo "  Time:    ${c_green}system-local${c_reset} ($(date '+%Z, UTC%z'))   Format: ${c_green}<local-time> | DEV|LOGR | <msg>${c_reset}"
+echo "${c_green}--- streaming (Ctrl-C to stop; auto-reconnects across crashes) ---${c_reset}"
+trap 'log_event "$c_yellow" "logger stopped (Ctrl-C)"; exit 0' INT
+
+while true; do
+  if [ ! -e "$PORT" ]; then
+    log_event "$c_yellow" "waiting for $PORT (device down / rebooting)..."
+    while [ ! -e "$PORT" ]; do sleep 0.5; done
+    log_event "$c_green" "port back -- reattaching"
+  fi
+
+  # Configure the port: speed, 8N1, raw (no line processing), no echo.
+  # CDC ACM ignores the baud rate but stty still wants a valid value.
+  stty -f "$PORT" "$BAUD" cs8 -cstopb -parenb -echo raw 2>/dev/null \
+    || stty -f "$PORT" "$BAUD" 2>/dev/null \
+    || log_event "$c_yellow" "stty could not configure $PORT (continuing)"
+
+  log_event "$c_green" "attached to $PORT @ ${BAUD} baud -- streaming"
+  if [ "$VERBOSE" -eq 1 ]; then
+    cat "$PORT" 2>/dev/null | stamp_dev | tee -a "$LOG_FILE"
+  else
+    # Allowlist: keep only connection/crash lines. Case-sensitive on purpose --
+    # case-insensitive would let "PHY" match "physical" in the kscan spam.
+    # grep runs BEFORE stamp_dev (ANSI codes don't sit inside the matched tokens).
+    cat "$PORT" 2>/dev/null | grep --line-buffered -E "$KEEP_RE" | stamp_dev | tee -a "$LOG_FILE"
+  fi
+
+  # cat returned -> EOF = USB dropped (crash / re-enumerate / unplug).
+  log_event "$c_red" "stream ended (USB drop / reboot) -- reconnecting"
+  sleep 0.5
+done
