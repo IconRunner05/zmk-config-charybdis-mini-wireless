@@ -9,14 +9,16 @@
 # Prereq: flash the `charybdis_right_debug` artifact (built with
 #   CONFIG_ZMK_USB_LOGGING=y) to the RIGHT half, then keep it tethered via USB.
 #
-# By default the noisy trackball/mouse debug lines are filtered out of both the
-# terminal and the logfile so a crash is not buried in mouse spam. Pass
-# -v/--verbose to keep everything (firmware fault dumps are NEVER filtered --
-# the patterns are mouse-specific).
+# By default, key and mouse activity is filtered out of both the terminal and
+# the logfile -- the DBG stream logs keycodes/positions/typed characters, so an
+# unfiltered log is effectively a keylogger. The default keeps connection and
+# crash telemetry only. Pass -v/--verbose to include the key/mouse lines (do NOT
+# leave a verbose capture lying around). Faults/panics/asserts/BLE disconnects
+# are never filtered in either mode.
 #
 # Usage:
-#   ./scripts/zmk_serial_debug.sh                 # auto-detect port, filtered
-#   ./scripts/zmk_serial_debug.sh -v              # keep trackball spam too
+#   ./scripts/zmk_serial_debug.sh                 # auto-detect port, safe filter
+#   ./scripts/zmk_serial_debug.sh -v              # include keystrokes (keylogger)
 #   ./scripts/zmk_serial_debug.sh /dev/cu.usbmodemXXXX
 #
 # Exit: Ctrl-C.
@@ -30,9 +32,14 @@ LOG_DIR="${0:A:h}/../logs"
 c_cyan="\033[1;36m"; c_green="\033[1;32m"; c_yellow="\033[1;33m"
 c_red="\033[1;31m"; c_reset="\033[0m"
 
-# Trackball/mouse spam to drop unless --verbose. Mouse-specific only, so panics,
-# faults, BLE disconnects and split events always pass through.
-SPAM_RE='apply_config: LISTENER INDEX|scale_val:|zmk_hid_mouse_movement_set|zmk_hid_mouse_scroll_set'
+# Lines relegated to --verbose. Two reasons:
+#   1. Privacy: the DBG stream logs keycodes, key positions, binding names and a
+#      hexdump whose ASCII gutter contains the literal characters typed. Writing
+#      that to disk would make this a keylogger. Keep it OUT of the default file.
+#   2. Noise: trackball/mouse movement floods the log.
+# Connection state, BLE (dis)connect + reason codes, faults, panics, asserts,
+# errors and warnings are NOT matched here, so they always pass through.
+VERBOSE_ONLY_RE='apply_config: LISTENER INDEX|scale_val:|zmk_hid_mouse_|split_central_notify_func|peripheral_event_work_callback|position_state_changed_listener|zmk_keymap_apply_position_state|keymap_binding_(pressed|released)|set_layer_state|hid_listener_keycode|zmk_hid_keyboard|zmk_hid_register|zmk_hid_unregister|zmk_hid_implicit|zmk_hid_get_keyboard|^[[:space:]]+([0-9a-f]{2} ){2}'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
@@ -73,9 +80,9 @@ echo "${c_cyan}  CHARYBDIS ZMK FIRMWARE SERIAL DEBUG${c_reset}"
 echo "  Port:    ${c_green}$PORT${c_reset} @ ${BAUD} baud"
 echo "  Logfile: ${c_green}$LOG_FILE${c_reset}"
 if [ "$VERBOSE" -eq 1 ]; then
-  echo "  Filter:  ${c_yellow}off (verbose -- trackball spam included)${c_reset}"
+  echo "  Filter:  ${c_red}OFF -- verbose: logs keystrokes/positions (keylogger!)${c_reset}"
 else
-  echo "  Filter:  ${c_green}on (trackball/mouse spam dropped; -v to keep)${c_reset}"
+  echo "  Filter:  ${c_green}on -- key/mouse data dropped; connection+crash only${c_reset}"
 fi
 echo "${c_cyan}=================================================================${c_reset}"
 echo "  Watch for:"
@@ -105,5 +112,5 @@ echo "${c_green}--- streaming (Ctrl-C to stop) ---${c_reset}"
 if [ "$VERBOSE" -eq 1 ]; then
   cat "$PORT" | tee -a "$LOG_FILE"
 else
-  cat "$PORT" | grep --line-buffered -vE "$SPAM_RE" | tee -a "$LOG_FILE"
+  cat "$PORT" | grep --line-buffered -vE "$VERBOSE_ONLY_RE" | tee -a "$LOG_FILE"
 fi
