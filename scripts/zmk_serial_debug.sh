@@ -9,11 +9,17 @@
 # Prereq: flash the `charybdis_right_debug` artifact (built with
 #   CONFIG_ZMK_USB_LOGGING=y) to the RIGHT half, then keep it tethered via USB.
 #
-# Usage:
-#   ./scripts/zmk_serial_debug.sh           # auto-detect port, log to ./logs/
-#   ./scripts/zmk_serial_debug.sh /dev/tty.usbmodemXXXX
+# By default the noisy trackball/mouse debug lines are filtered out of both the
+# terminal and the logfile so a crash is not buried in mouse spam. Pass
+# -v/--verbose to keep everything (firmware fault dumps are NEVER filtered --
+# the patterns are mouse-specific).
 #
-# Exit screen: Ctrl-A then k  (or Ctrl-A then \).
+# Usage:
+#   ./scripts/zmk_serial_debug.sh                 # auto-detect port, filtered
+#   ./scripts/zmk_serial_debug.sh -v              # keep trackball spam too
+#   ./scripts/zmk_serial_debug.sh /dev/cu.usbmodemXXXX
+#
+# Exit: Ctrl-C.
 # =============================================================================
 
 set -u
@@ -24,11 +30,25 @@ LOG_DIR="${0:A:h}/../logs"
 c_cyan="\033[1;36m"; c_green="\033[1;32m"; c_yellow="\033[1;33m"
 c_red="\033[1;31m"; c_reset="\033[0m"
 
+# Trackball/mouse spam to drop unless --verbose. Mouse-specific only, so panics,
+# faults, BLE disconnects and split events always pass through.
+SPAM_RE='apply_config: LISTENER INDEX|scale_val:|zmk_hid_mouse_movement_set|zmk_hid_mouse_scroll_set'
+
+# --- parse args (flag and/or explicit port, any order) ------------------------
+VERBOSE=0
+PORT=""
+for arg in "$@"; do
+  case "$arg" in
+    -v|--verbose) VERBOSE=1 ;;
+    -*) echo "${c_red}Unknown option: $arg${c_reset}"; exit 1 ;;
+    *) PORT="$arg" ;;
+  esac
+done
+
 # --- locate the serial port ---------------------------------------------------
 # IMPORTANT: use the /dev/cu.* (callout) device, NOT /dev/tty.* — on macOS the
 # tty.* node blocks on open until carrier (DCD) is asserted, so `cat` hangs and
 # captures nothing. cu.* is non-blocking and is the correct device for reading.
-PORT="${1:-}"
 if [ -z "$PORT" ]; then
   PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -n1)
 fi
@@ -52,6 +72,11 @@ echo "${c_cyan}=================================================================
 echo "${c_cyan}  CHARYBDIS ZMK FIRMWARE SERIAL DEBUG${c_reset}"
 echo "  Port:    ${c_green}$PORT${c_reset} @ ${BAUD} baud"
 echo "  Logfile: ${c_green}$LOG_FILE${c_reset}"
+if [ "$VERBOSE" -eq 1 ]; then
+  echo "  Filter:  ${c_yellow}off (verbose -- trackball spam included)${c_reset}"
+else
+  echo "  Filter:  ${c_green}on (trackball/mouse spam dropped; -v to keep)${c_reset}"
+fi
 echo "${c_cyan}=================================================================${c_reset}"
 echo "  Watch for:"
 echo "    ${c_red}***** USAGE FAULT *****${c_reset} / ${c_red}***** Kernel Panic *****${c_reset}  -> firmware crash + register dump"
@@ -76,4 +101,9 @@ stty -f "$PORT" "$BAUD" cs8 -cstopb -parenb -echo raw 2>/dev/null \
 
 echo "${c_green}--- streaming (Ctrl-C to stop) ---${c_reset}"
 # Ctrl-C tears down the pipeline; tee -a appends if the file already exists.
-cat "$PORT" | tee -a "$LOG_FILE"
+# --line-buffered keeps grep flushing each line live (and before a crash).
+if [ "$VERBOSE" -eq 1 ]; then
+  cat "$PORT" | tee -a "$LOG_FILE"
+else
+  cat "$PORT" | grep --line-buffered -vE "$SPAM_RE" | tee -a "$LOG_FILE"
+fi
