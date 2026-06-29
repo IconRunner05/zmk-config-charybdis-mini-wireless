@@ -39,12 +39,6 @@ if [ -z "$PORT" ] || [ ! -e "$PORT" ]; then
   exit 1
 fi
 
-# --- dependency check ---------------------------------------------------------
-if ! command -v screen >/dev/null 2>&1; then
-  echo "${c_red}'screen' not installed.${c_reset}  brew install screen"
-  exit 1
-fi
-
 # --- prep timestamped logfile -------------------------------------------------
 mkdir -p "$LOG_DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -62,10 +56,21 @@ echo "    ${c_yellow}<wrn> ... disconnected (reason 0xXX)${c_reset}             
 echo "    ${c_yellow}peripheral ... disconnected${c_reset}                       -> split half dropped"
 echo ""
 echo "  Leave this running (overnight/weekend). On crash the dump lands above"
-echo "  AND in the logfile. Exit screen: ${c_yellow}Ctrl-A then k${c_reset}."
+echo "  AND in the logfile. Exit: ${c_yellow}Ctrl-C${c_reset}."
 echo "${c_cyan}=================================================================${c_reset}"
 echo ""
 
-# -L enables logging, -Logfile sets the path, -fn disables flow control so a
-# crash-time burst is not throttled.
-exec screen -L -Logfile "$LOG_FILE" -fn "$PORT" "$BAUD"
+# macOS ships an old BSD `screen` without -Logfile, so capture with stty+cat|tee
+# instead. This is one-way (read-only) capture -- exactly what log streaming
+# needs -- and `tee` mirrors to the terminal and the logfile at once. Opening
+# the port asserts DTR, which the ZMK USB CDC console needs before it streams.
+
+# Configure the port: set speed, 8N1, raw (no line processing), no echo.
+# CDC ACM ignores the baud rate but stty still wants a valid value.
+stty -f "$PORT" "$BAUD" cs8 -cstopb -parenb -echo raw 2>/dev/null \
+  || stty -f "$PORT" "$BAUD" 2>/dev/null \
+  || echo "${c_yellow}warning: stty could not configure $PORT (continuing anyway)${c_reset}"
+
+echo "${c_green}--- streaming (Ctrl-C to stop) ---${c_reset}"
+# Ctrl-C tears down the pipeline; tee -a appends if the file already exists.
+cat "$PORT" | tee -a "$LOG_FILE"
