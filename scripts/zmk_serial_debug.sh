@@ -39,7 +39,7 @@ c_red="\033[1;31m"; c_reset="\033[0m"
 #   2. Noise: trackball/mouse movement floods the log.
 # Connection state, BLE (dis)connect + reason codes, faults, panics, asserts,
 # errors and warnings are NOT matched here, so they always pass through.
-VERBOSE_ONLY_RE='apply_config: LISTENER INDEX|scale_val:|zmk_hid_mouse_|split_central_notify_func|peripheral_event_work_callback|position_state_changed_listener|zmk_keymap_apply_position_state|keymap_binding_(pressed|released)|set_layer_state|hid_listener_keycode|zmk_hid_keyboard|zmk_hid_register|zmk_hid_unregister|zmk_hid_implicit|zmk_hid_get_keyboard|^[[:space:]]+([0-9a-f]{2} ){2}'
+VERBOSE_ONLY_RE='apply_config: LISTENER INDEX|scale_val:|zmk_hid_mouse_|split_central_notify_func|peripheral_event_work_callback|position_state_changed_listener|position_state_down|zmk_keymap_apply_position_state|keymap_binding_(pressed|released)|set_layer_state|hid_listener_keycode|zmk_hid_keyboard|zmk_hid_register|zmk_hid_unregister|zmk_hid_implicit|zmk_hid_get_keyboard|combo|zmk_event_manager_handle_from|^[[:space:]]+([0-9a-f]{2} ){2}'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
