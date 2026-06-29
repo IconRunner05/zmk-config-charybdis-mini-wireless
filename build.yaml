@@ -14,7 +14,7 @@
 ---
 include:
   - board: nice_nano@2//zmk
-    shield: charybdis_left
+    shield: charybdis_left nice_view_adapter nice_view_gem
   - board: nice_nano@2//zmk
     shield: charybdis_right
     snippet: studio-rpc-usb-uart
