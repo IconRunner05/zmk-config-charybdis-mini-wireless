@@ -25,17 +25,20 @@ c_cyan="\033[1;36m"; c_green="\033[1;32m"; c_yellow="\033[1;33m"
 c_red="\033[1;31m"; c_reset="\033[0m"
 
 # --- locate the serial port ---------------------------------------------------
+# IMPORTANT: use the /dev/cu.* (callout) device, NOT /dev/tty.* — on macOS the
+# tty.* node blocks on open until carrier (DCD) is asserted, so `cat` hangs and
+# captures nothing. cu.* is non-blocking and is the correct device for reading.
 PORT="${1:-}"
 if [ -z "$PORT" ]; then
-  # nice_nano enumerates as /dev/tty.usbmodem* on macOS
-  PORT=$(ls /dev/tty.usbmodem* 2>/dev/null | head -n1)
+  PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -n1)
 fi
 
 if [ -z "$PORT" ] || [ ! -e "$PORT" ]; then
   echo "${c_red}No USB serial port found.${c_reset}"
   echo "  - Is the RIGHT half flashed with the *_debug firmware and plugged in?"
-  echo "  - A bare nice_nano in bootloader mode shows as a disk, not a tty."
-  echo "  - List candidates:  ls /dev/tty.usbmodem*"
+  echo "  - A bare nice_nano in bootloader mode shows as a disk, not a serial port."
+  echo "  - Use a DATA usb cable, not charge-only."
+  echo "  - List candidates:  ls /dev/cu.usbmodem*"
   exit 1
 fi
 
