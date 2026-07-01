@@ -7,14 +7,20 @@ zephyr_library()
 zephyr_library_sources(build_stamp.c)
 
 # git describe of THIS repo, best-effort. CMAKE_CURRENT_LIST_DIR is the config/
-# dir; git walks up to the repo-root .git. In CI the checkout is shallow with no
-# tags, so --always yields the short SHA (--tags is a bonus when tags exist).
-# ERROR_QUIET + fallback keeps the build working if git/.git is unavailable.
+# dir; when built locally git walks up to the repo-root .git. --always yields a
+# short SHA even on a shallow checkout (--tags is a bonus when tags exist).
 execute_process(
   COMMAND git -C ${CMAKE_CURRENT_LIST_DIR} describe --always --dirty --tags
   OUTPUT_VARIABLE CHARYBDIS_GIT_DESC
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET)
+# CI fallback: ZMK stages config/ into the west workspace with no parent .git,
+# so git describe is empty there. GitHub Actions always exports GITHUB_SHA for
+# the built commit -- use its short form so CI images stay commit-traceable.
+if(NOT CHARYBDIS_GIT_DESC AND DEFINED ENV{GITHUB_SHA})
+  string(SUBSTRING "$ENV{GITHUB_SHA}" 0 8 CHARYBDIS_GIT_DESC)
+  set(CHARYBDIS_GIT_DESC "ci-${CHARYBDIS_GIT_DESC}")
+endif()
 if(NOT CHARYBDIS_GIT_DESC)
   set(CHARYBDIS_GIT_DESC "nogit")
 endif()
