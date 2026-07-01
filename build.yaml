@@ -56,11 +56,19 @@ include:
     #                          PMW3610 trackball polling). 5s is the Kconfig
     #                          minimum (range [5, 3600]); lower values warn and
     #                          the build aborts on Kconfig warnings.
+    # THREAD_NAME: without it the analyzer prints bare hex addresses, not
+    # "mpsl_work"/"BT RX"/"sysworkq" -- unreadable. SCHED_THREAD_USAGE is
+    # selected by THREAD_RUNTIME_STATS but set explicitly so CPU% is guaranteed.
+    # Read the LAST dump before silence: a named thread pinned high = that
+    # subsystem; idle% collapsed while NO thread is high = ISR storm (prime
+    # suspect: PMW3610 trackball IRQ line stuck asserted under fast movement).
     cmake-args: >-
       -DCONFIG_THREAD_ANALYZER=y
       -DCONFIG_THREAD_ANALYZER_AUTO=y
       -DCONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5
       -DCONFIG_THREAD_ANALYZER_USE_PRINTK=n
       -DCONFIG_THREAD_RUNTIME_STATS=y
+      -DCONFIG_SCHED_THREAD_USAGE=y
+      -DCONFIG_THREAD_NAME=y
   - board: nice_nano@2//zmk
     shield: settings_reset
