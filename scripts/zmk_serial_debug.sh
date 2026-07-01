@@ -47,7 +47,7 @@ c_red="\033[1;31m"; c_reset="\033[0m"
 # Added: split CONNECTION markers (not the notify/event lines — those carry the
 # position bitmap), conn-param updates, and reboot/boot banners so a central
 # reset is visible. Bare "split"/"position"/"peripheral_event" stay OUT (key data).
-KEEP_RE='<inf>|<wrn>|<err>|BUILDSTAMP|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
+KEEP_RE='<inf>|<wrn>|<err>|BUILDSTAMP|Thread analyze|thread_analyzer|STACK:| unused |Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
