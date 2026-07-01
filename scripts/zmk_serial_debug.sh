@@ -47,7 +47,7 @@ c_red="\033[1;31m"; c_reset="\033[0m"
 # Added: split CONNECTION markers (not the notify/event lines — those carry the
 # position bitmap), conn-param updates, and reboot/boot banners so a central
 # reset is visible. Bare "split"/"position"/"peripheral_event" stay OUT (key data).
-KEEP_RE='<inf>|<wrn>|<err>|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
+KEEP_RE='<inf>|<wrn>|<err>|BUILDSTAMP|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
@@ -155,8 +155,15 @@ log_event() {  # $1 = terminal color, $2 = message
 }
 
 echo "  Time:    ${c_green}system-local${c_reset} ($(date '+%Z, UTC%z'))   Format: ${c_green}<local-time> | DEV|LOGR | <msg>${c_reset}"
+
+# Build traceability: record which config commit THIS logger was launched from.
+# The flashed firmware logs its own `BUILDSTAMP git=<sha>` at boot -- if the two
+# git= values differ, the board is running a stale image (rebuild/reflash).
+EXPECT_GIT=$(git -C "${0:A:h}/.." describe --always --dirty --tags 2>/dev/null || echo "nogit")
+echo "  Build:   ${c_green}logger launched from config git=${EXPECT_GIT}${c_reset} -- expect matching firmware BUILDSTAMP"
 echo "${c_green}--- streaming (Ctrl-C to stop; auto-reconnects across crashes) ---${c_reset}"
 trap 'log_event "$c_yellow" "logger stopped (Ctrl-C)"; exit 0' INT
+log_event "$c_cyan" "logger launched from config git=${EXPECT_GIT} (tap RIGHT reset to print firmware BUILDSTAMP for comparison)"
 
 while true; do
   if [ ! -e "$PORT" ]; then

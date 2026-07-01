@@ -1,0 +1,7 @@
+name: charybdis_buildstamp
+build:
+  # Compile config/CMakeLists.txt into the firmware. Minimal on purpose: no
+  # `settings:` block, so shield/board discovery stays on ZMK's -DZMK_CONFIG
+  # path and is untouched. This module only adds one source file that logs a
+  # build fingerprint at boot (see config/build_stamp.c).
+  cmake: .
