@@ -22,7 +22,7 @@ manifest:
     # once the fix lands upstream.
     - name: zmk-pmw3610-driver
       remote: iconrunner05
-      revision: 6f47e6931e30fa81992e73c44b9bdc7f137043ba
+      revision: 7544e89020da7c99ed1c0834f879af7218153126
     - name: zmk-input-processor-report-rate-limit
       remote: badjeff
       revision: main
