@@ -5,13 +5,13 @@
  * on YOUR breakout board. Edit the pin number to match the nice!nano v2
  * pro_micro pin that the breakout pad is wired to.
  *
- *   Macro name      pro_micro pin   (← matrix role)
- *   ------------    -------------    ---------------
- *   R_PAD_R1        21               row 0   (TAB row)
- *   R_PAD_R2        18               row 1   (ESC row)
- *   R_PAD_R3         5               row 2   (LGUI/Z row)     ⚠ shared w/ EXT_POWER ctrl
- *   R_PAD_R4         4               row 3   (thumbs)         ⚠ shared w/ PMW3610 CS
- *   R_PAD_R5         9               row 4   (number row)
+ *   Macro name      pro_micro pin   (nrf pin)   (← matrix role)
+ *   ------------    -------------   ---------   ---------------
+ *   R_PAD_R1        21              P0.31       row 0   (TAB row)
+ *   R_PAD_R2        18              P1.15       row 1   (ESC row)
+ *   R_PAD_R3         5              P0.24       row 2   (LGUI/Z row)
+ *   R_PAD_R4         4              P0.22       row 3   (thumbs)
+ *   R_PAD_R5         9              P1.06       row 4   (number row)
  *
  *   R_PAD_C1        19               col 0
  *   R_PAD_C2        20               col 1
@@ -24,12 +24,17 @@
  * (e.g. R_PAD_J3, R_PAD_TOP_LEFT). If you rename, sweep the references
  * in MATRIX_ROW*_PIN below and in charybdis_right.overlay col-gpios.
  *
- * ⚠ Pin sharing on right half (mirrors master config):
- *   pro_micro 4 (P0.20) = matrix row 3 (thumbs)     AND PMW3610 cs-gpios
- *   pro_micro 5 (P0.13) = matrix row 2 (LGUI/Z row) AND EXT_POWER control
+ * Pin usage on right half — NO conflicts (verified against the nice!nano v2
+ * pinout). On the nice!nano the pro_micro nexus index equals the Arduino D#,
+ * so matrix pins resolve as: row pads 18/5/4/9 = D18/D5/D4/D9 = P1.15/P0.24/
+ * P0.22/P1.06, col pads 19/20/10/6/7/8 = D19/D20/D10/D6/D7/D8 = P0.02/P0.29/
+ * P0.09/P1.00/P0.11/P1.04. The trackball uses RAW nrf pins (SCK P0.08, SDIO
+ * P0.17, CS P0.20, MOTION/IRQ P0.06). None of those overlap any matrix pin.
  *
- * PMW3610 IRQ is on raw &gpio0 6 (P0.06 = pro_micro 1, D1) per
- * pmw3610.dtsi — NOT pro_micro 6 (P0.24). No col-3 conflict.
+ * NOTE: an earlier version of this file claimed pro_micro 4 = P0.20 (shared w/
+ * PMW3610 CS) and pro_micro 5 = P0.13 (shared w/ EXT_POWER). Both were wrong:
+ * pro_micro 4 = P0.22 and 5 = P0.24. P0.20 is pro_micro 3 (unused here) and
+ * P0.13 is the internal 3V3 cutoff, not on any header the matrix touches.
  */
 
 /* ---- Pad → pro_micro pin (RIGHT half) ------------------------------ */
@@ -59,8 +64,8 @@
  *   ----------------      ------------   -----------------    -----------   ----
  *   —                     —              VCC                  VCC           power
  *   R_PAD_TB_SCK_*        P0.08          pro_micro 0 (D0)     SCLK          SPI clock
- *   R_PAD_TB_MOSI_*       P0.17          pro_micro 3 (D3)     SDIO          SPI data (3-wire bidirectional)
- *   R_PAD_TB_CS_PIN       P0.20          pro_micro 4 (D4)     NCS           chip select  ⚠ shared w/ row 3 (thumbs)
+ *   R_PAD_TB_MOSI_*       P0.17          pro_micro 2 (D2)     SDIO          SPI data (3-wire bidirectional)
+ *   R_PAD_TB_CS_PIN       P0.20          pro_micro 3 (D3)     NCS           chip select
  *   R_PAD_TB_IRQ_PIN      P0.06          pro_micro 1 (D1)     MOTION        motion IRQ (hw MISO pad repurposed)
  *   —                     —              GND                  GND           ground
  */
