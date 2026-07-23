@@ -9,7 +9,6 @@
 #include "breakout_right.dtsi"
 #include "charybdis.dtsi"
 #include "pmw3610.dtsi"
-#include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <dt-bindings/zmk/input_transform.h>
 
 

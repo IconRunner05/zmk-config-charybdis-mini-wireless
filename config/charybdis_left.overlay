@@ -1,0 +1,4 @@
+/* nice!View SPI enabling */
+&spi0 {
+    status = "okay";
+};

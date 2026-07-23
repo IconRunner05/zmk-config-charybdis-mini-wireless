@@ -8,16 +8,67 @@
 # shield: [ "corne_left", "corne_right" ]
 # include:
 #   - board: bdn9_rev2
-#   - board: nice_nano@2//zmk
+#   - board: nice_nano_v2
 #     shield: reviung41
 #
 ---
 include:
   - board: nice_nano@2//zmk
-    shield: charybdis_left
+    shield: charybdis_left nice_view_adapter nice_view_gem
   - board: nice_nano@2//zmk
     shield: charybdis_right
     snippet: studio-rpc-usb-uart
     cmake-args: -DCONFIG_ZMK_STUDIO=y
+  # --- DEBUG build for the weekend-crash investigation ---
+  # Right half (central) with USB logging via ZMK's dedicated zmk-usb-logging
+  # snippet. The snippet sets up the USB CDC ACM device, points chosen
+  # zephyr,console at it, and enables CONFIG_ZMK_USB_LOGGING (debug level) --
+  # the supported path on hardware-model boards (nice_nano@2//zmk). Do NOT also
+  # set the raw CONFIG_ZMK_USB_LOGGING / studio snippet: that path lacks the
+  # console chosen node and fails to build.
+  # Flash this .uf2 to the RIGHT half, tether via USB, run
+  # scripts/zmk_serial_debug.sh, and wait for the panic/fault dump.
+  # Remove this entry once diagnosed.
+  - board: nice_nano@2//zmk
+    shield: charybdis_right
+    snippet: zmk-usb-logging
+    artifact-name: charybdis_right_debug
+    # Hang-hunt instrumentation (debug build ONLY; normal right build untouched).
+    # Symptom: right half (central) went unresponsive mid-session with NO reboot
+    # banner and NO fault dump -- a hang, not a crash-reset. Trigger unknown
+    # (random within a ~35s window), so this runs continuously to catch it live.
+    #
+    # NOTE: an earlier attempt also set CONFIG_LOG_MODE_IMMEDIATE=y and
+    # CONFIG_WATCHDOG=y and BRICKED boot (dead on both USB and BLE, reset+revert
+    # required). Root cause: IMMEDIATE mode writes each log line synchronously
+    # inline over the USB CDC console; boot-time logs fire before USB enumerates,
+    # so the write blocks and init never completes -> no USB, no BLE. WATCHDOG=y
+    # alone is also inert here (ZMK never calls wdt_setup()/feeds it), so it gave
+    # no recovery benefit. Both removed. Keep deferred logging (the snippet
+    # default, which worked) -- on a true CPU hang the deferred drain thread also
+    # stalls, but THREAD_ANALYZER_AUTO still prints periodic snapshots up to ~5s
+    # before the hang, which is the data we actually need.
+    #
+    #   THREAD_ANALYZER_AUTO - per-thread stack high-water + CPU use every 5s.
+    #                          The LAST dump before silence is the lead: which
+    #                          thread's stack collapsed, stopped advancing, or is
+    #                          eating the CPU (suspect BLE RX / split central /
+    #                          PMW3610 trackball polling). 5s is the Kconfig
+    #                          minimum (range [5, 3600]); lower values warn and
+    #                          the build aborts on Kconfig warnings.
+    # THREAD_NAME: without it the analyzer prints bare hex addresses, not
+    # "mpsl_work"/"BT RX"/"sysworkq" -- unreadable. SCHED_THREAD_USAGE is
+    # selected by THREAD_RUNTIME_STATS but set explicitly so CPU% is guaranteed.
+    # Read the LAST dump before silence: a named thread pinned high = that
+    # subsystem; idle% collapsed while NO thread is high = ISR storm (prime
+    # suspect: PMW3610 trackball IRQ line stuck asserted under fast movement).
+    cmake-args: >-
+      -DCONFIG_THREAD_ANALYZER=y
+      -DCONFIG_THREAD_ANALYZER_AUTO=y
+      -DCONFIG_THREAD_ANALYZER_AUTO_INTERVAL=5
+      -DCONFIG_THREAD_ANALYZER_USE_PRINTK=n
+      -DCONFIG_THREAD_RUNTIME_STATS=y
+      -DCONFIG_SCHED_THREAD_USAGE=y
+      -DCONFIG_THREAD_NAME=y
   - board: nice_nano@2//zmk
     shield: settings_reset
