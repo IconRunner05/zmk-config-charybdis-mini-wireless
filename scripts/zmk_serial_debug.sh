@@ -47,7 +47,14 @@ c_red="\033[1;31m"; c_reset="\033[0m"
 # Added: split CONNECTION markers (not the notify/event lines — those carry the
 # position bitmap), conn-param updates, and reboot/boot banners so a central
 # reset is visible. Bare "split"/"position"/"peripheral_event" stay OUT (key data).
-KEEP_RE='<inf>|<wrn>|<err>|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
+#
+# Thread-analyzer tokens (Thread analyze|thread_analyzer|STACK:| unused |CPU:) are
+# kept explicitly: with CONFIG_THREAD_ANALYZER_USE_PRINTK=n the analyzer emits at
+# <inf> (already caught), but the Zephyr DEFAULT is USE_PRINTK=y, whose raw printk
+# lines have NO <inf> tag — without these tokens a printk-format build's snapshots
+# are silently dropped, which is the whole hang-hunt payload. BUILDSTAMP is the
+# boot firmware<->commit fingerprint line (build_stamp.c) so a stale flash shows.
+KEEP_RE='<inf>|<wrn>|<err>|BUILDSTAMP|Thread analyze|thread_analyzer|STACK:| unused |CPU:|Disconnected|Connected|reason 0x|param|security|encrypt|bond|paired|pairing|profile|advertis|MTU|PHY|settings|Booting|Bootloader|Zephyr|reboot|sys_reboot| reset|panic|PANIC|fault|FAULT|assert|ASSERT|stack overflow|watchdog|brownout|BROWNOUT|split_central_conn|split_central_disconn|start_scan|stop_scan|le_param|conn_param|update_conn|supervision|Failed|failed to'
 
 # --- parse args (flag and/or explicit port, any order) ------------------------
 VERBOSE=0
