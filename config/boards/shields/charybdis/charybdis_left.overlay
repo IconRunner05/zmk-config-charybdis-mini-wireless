@@ -5,7 +5,7 @@
  */
 
 /* Per-side breakout map MUST come before charybdis.dtsi so the shared
- * dtsi sees MATRIX_ROW*_PIN definitions for this half. */
+ * dtsi sees MATRIX_ROW*_GPIO definitions for this half. */
 #include "breakout_left.dtsi"
 #include "charybdis.dtsi"
 #include "pmw3610.dtsi"
@@ -14,12 +14,12 @@
 &kscan0 {
 	/* Col pins reference pad macros from breakout_left.dtsi. */
 	col-gpios
-		= <&pro_micro L_PAD_C1 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro L_PAD_C2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro L_PAD_C3 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro L_PAD_C4 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro L_PAD_C5 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro L_PAD_C6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		= <L_PAD_C1 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <L_PAD_C2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <L_PAD_C3 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <L_PAD_C4 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <L_PAD_C5 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <L_PAD_C6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
 		;
 };
 

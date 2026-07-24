@@ -5,6 +5,11 @@
  * right overlay includes it first. Left overlay disables &spi0 and
  * &trackball, so these defaults are inert there but must still resolve
  * for the dts compile to succeed.
+ *
+ * SCK / MOSI are SPI pinctrl (NRF_PSEL) -> literal _PORT + _PIN ints.
+ * CS / IRQ are plain GPIO -> full `&gpioX pin` spec (raw-nRF, same form
+ * as the matrix pads in breakout_*.dtsi). A port-1 trackball needs only
+ * `&gpio1 xx` in the breakout file — no edit here.
  */
 #ifndef R_PAD_TB_SCK_PORT
   #define R_PAD_TB_SCK_PORT    0
@@ -18,11 +23,11 @@
 #ifndef R_PAD_TB_MOSI_PIN
   #define R_PAD_TB_MOSI_PIN   17
 #endif
-#ifndef R_PAD_TB_CS_PIN
-  #define R_PAD_TB_CS_PIN     20
+#ifndef R_PAD_TB_CS
+  #define R_PAD_TB_CS   &gpio0 20
 #endif
-#ifndef R_PAD_TB_IRQ_PIN
-  #define R_PAD_TB_IRQ_PIN     6
+#ifndef R_PAD_TB_IRQ
+  #define R_PAD_TB_IRQ  &gpio0 6
 #endif
 
 &pinctrl {
@@ -50,14 +55,14 @@
     pinctrl-0 = <&spi0_default>;
     pinctrl-1 = <&spi0_sleep>;
     pinctrl-names = "default", "sleep";
-    cs-gpios = <&gpio0 R_PAD_TB_CS_PIN GPIO_ACTIVE_LOW>;
+    cs-gpios = <R_PAD_TB_CS GPIO_ACTIVE_LOW>;
 
     trackball: trackball@0 {
         status = "okay";
         compatible = "pixart,pmw3610-alt";
         reg = <0>;
         spi-max-frequency = <2000000>;
-        irq-gpios = <&gpio0 R_PAD_TB_IRQ_PIN (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        irq-gpios = <R_PAD_TB_IRQ (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
         /* Use this value to change the trackball sensitivity */
         cpi = <900>;

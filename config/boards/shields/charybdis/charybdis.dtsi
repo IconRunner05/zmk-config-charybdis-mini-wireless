@@ -66,14 +66,16 @@
         diode-direction = CHARYBDIS_DIODE_DIR;
 		/*
 		 * Row pins come from the per-side breakout map
-		 * (breakout_left.dtsi / breakout_right.dtsi) via MATRIX_ROW*_PIN.
-		 * Edit the breakout file for your half — not this list.
+		 * (breakout_left.dtsi / breakout_right.dtsi) via MATRIX_ROW*_GPIO.
+		 * Each macro expands to a full `&gpioX pin` spec (raw nRF), so no
+		 * &pro_micro nexus here. Edit the breakout file for your half —
+		 * not this list.
 		 */
 		row-gpios
-			= <&pro_micro MATRIX_ROW0_PIN CHARYBDIS_ROW_FLAGS>
-			, <&pro_micro MATRIX_ROW1_PIN CHARYBDIS_ROW_FLAGS>
-			, <&pro_micro MATRIX_ROW2_PIN CHARYBDIS_ROW_FLAGS>
-			, <&pro_micro MATRIX_ROW3_PIN CHARYBDIS_ROW_FLAGS>
+			= <MATRIX_ROW0_GPIO CHARYBDIS_ROW_FLAGS>
+			, <MATRIX_ROW1_GPIO CHARYBDIS_ROW_FLAGS>
+			, <MATRIX_ROW2_GPIO CHARYBDIS_ROW_FLAGS>
+			, <MATRIX_ROW3_GPIO CHARYBDIS_ROW_FLAGS>
             ;
     };
 };
