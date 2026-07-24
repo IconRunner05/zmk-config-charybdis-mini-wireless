@@ -62,6 +62,14 @@ include:
     # Read the LAST dump before silence: a named thread pinned high = that
     # subsystem; idle% collapsed while NO thread is high = ISR storm (prime
     # suspect: PMW3610 trackball IRQ line stuck asserted under fast movement).
+    #
+    # HANG CAPTURE (config/hang_capture.c, gated by CONFIG_CHARYBDIS_HANG_CAPTURE):
+    # a fed hardware watchdog that, on a hang, records the running thread + PC to
+    # __noinit RAM and warm-resets; the fingerprint replays as a HANGDUMP line on
+    # the next boot. Deferred logging can't deliver a hang dump (stalled CPU never
+    # drains the buffer, no fault fires) — this is the mechanism that can. Needs
+    # WATCHDOG + HWINFO. Armed with WDT_OPT_PAUSE_IN_SLEEP so it never fires in
+    # deep sleep. Debug build ONLY; the normal right build stays watchdog-free.
     cmake-args: >-
       -DCONFIG_THREAD_ANALYZER=y
       -DCONFIG_THREAD_ANALYZER_AUTO=y
@@ -70,5 +78,8 @@ include:
       -DCONFIG_THREAD_RUNTIME_STATS=y
       -DCONFIG_SCHED_THREAD_USAGE=y
       -DCONFIG_THREAD_NAME=y
+      -DCONFIG_WATCHDOG=y
+      -DCONFIG_HWINFO=y
+      -DCONFIG_CHARYBDIS_HANG_CAPTURE=y
   - board: nice_nano@2//zmk
     shield: settings_reset
