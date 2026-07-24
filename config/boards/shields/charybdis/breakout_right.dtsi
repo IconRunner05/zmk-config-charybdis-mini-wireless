@@ -1,86 +1,89 @@
 /*
  * RIGHT-half breakout board pad map.
  *
- * Edit the right-hand column of each table to match the silkscreen labels
- * on YOUR breakout board. Edit the pin number to match the nice!nano v2
- * pro_micro pin that the breakout pad is wired to.
+ * ONE numbering space: raw nRF pins. Every pad macro carries the gpio
+ * controller phandle AND pin (e.g. `&gpio0 20`), so "20" always means
+ * P0.20 — everywhere in the tree, with no Pro-Micro D-number translation
+ * to get wrong. To wire a pad, read the nRF pin (P0.xx / P1.xx) printed
+ * on the nice!nano pad and put `&gpio0 xx` (port 0) or `&gpio1 xx`
+ * (port 1) here.
  *
- *   Macro name      pro_micro pin   (← matrix role)
- *   ------------    -------------    ---------------
- *   R_PAD_R1        21               row 0   (TAB row)
- *   R_PAD_R2        18               row 1   (ESC row)
- *   R_PAD_R3         5               row 2   (LGUI/Z row)
- *   R_PAD_R4         4               row 3   (thumbs)
- *   R_PAD_R5         9               row 4   (number row)
+ * The macro NAME is your PCB silkscreen pad label; the VALUE is the
+ * nice!nano nRF pin it is wired to. Verify keymaps / wiring off the pad
+ * names, not raw pins.
  *
- *   R_PAD_C1        19               col 0
- *   R_PAD_C2        20               col 1
- *   R_PAD_C3        10               col 2
- *   R_PAD_C4         6               col 3
- *   R_PAD_C5         7               col 4
- *   R_PAD_C6         8               col 5
+ *   Pad        nRF pin    role              Pro-Micro pad (reference only)
+ *   --------   --------   ---------------   -----------------------------
+ *   R_PAD_R1   P0.31      row 0 (TAB)       21
+ *   R_PAD_R2   P1.15      row 1 (ESC)       18
+ *   R_PAD_R3   P0.24      row 2 (LGUI/Z)     5
+ *   R_PAD_R4   P0.22      row 3 (thumbs)     4
+ *   R_PAD_R5   P1.06      row 4 (number)     9
+ *   R_PAD_C1   P0.02      col 0             19
+ *   R_PAD_C2   P0.29      col 1             20
+ *   R_PAD_C3   P0.09      col 2             10
+ *   R_PAD_C4   P1.00      col 3              6
+ *   R_PAD_C5   P0.11      col 4              7
+ *   R_PAD_C6   P1.04      col 5              8
+ *
+ * No pin collisions: every matrix pin above is distinct from the four
+ * trackball pins (P0.08 / P0.17 / P0.20 / P0.06). "20" macros differ by
+ * phandle — R_PAD_C2 = P0.29 (pro_micro D20), trackball CS = P0.20 — and
+ * that is now visible in one space instead of hidden across two.
  *
  * Rename the R_PAD_* identifiers to match the silkscreen if useful
- * (e.g. R_PAD_J3, R_PAD_TOP_LEFT). If you rename, sweep the references
- * in MATRIX_ROW*_PIN below and in charybdis_right.overlay col-gpios.
- *
- * NO pin sharing on right half — verified against the nice!nano v2 pro_micro
- * nexus (arduino_pro_micro_pins.dtsi). Earlier ⚠ notes here claimed the matrix
- * shared pins with CS / EXT_POWER; those were WRONG — they conflated pro_micro
- * D-numbers with nRF P0.xx numbers. Actual silicon pins, all distinct:
- *   matrix row2 = pro_micro 5  = P0.24   (NOT P0.13; EXT_POWER=P0.13 is not a
- *                                         pro_micro pin, so no collision)
- *   matrix row3 = pro_micro 4  = P0.22   (NOT P0.20)
- *   PMW3610 CS  = &gpio0 20     = P0.20  = pro_micro 3 (D3, unused by matrix)
- *   PMW3610 IRQ = &gpio0 6      = P0.06  = pro_micro 1 (D1, unused by matrix)
- * Trackball SPI (P0.08/P0.17/P0.20/P0.06) collides with nothing.
+ * (e.g. R_PAD_J3). If you rename, sweep MATRIX_ROW*_GPIO below and the
+ * col-gpios in charybdis_right.overlay.
  */
 
-/* ---- Pad → pro_micro pin (RIGHT half) ------------------------------ */
-#define R_PAD_R1   21
-#define R_PAD_R2   18
-#define R_PAD_R3    5
-#define R_PAD_R4    4
-#define R_PAD_R5    9
+/* ---- Matrix pad -> nRF gpio (RIGHT half) --------------------------- */
+#define R_PAD_R1   &gpio0 31
+#define R_PAD_R2   &gpio1 15
+#define R_PAD_R3   &gpio0 24
+#define R_PAD_R4   &gpio0 22
+#define R_PAD_R5   &gpio1 6
 
-#define R_PAD_C1   19
-#define R_PAD_C2   20
-#define R_PAD_C3   10
-#define R_PAD_C4    6
-#define R_PAD_C5    7
-#define R_PAD_C6    8
+#define R_PAD_C1   &gpio0 2
+#define R_PAD_C2   &gpio0 29
+#define R_PAD_C3   &gpio0 9
+#define R_PAD_C4   &gpio1 0
+#define R_PAD_C5   &gpio0 11
+#define R_PAD_C6   &gpio1 4
 
-/* ---- Trackball (PMW3610) pad → nrf gpio (RIGHT half) --------------- *
- * Consumed by pmw3610.dtsi. SPI pinctrl uses NRF_PSEL(signal, port, pin)
- * so both port and pin must be literal numbers. CS / IRQ use the raw
- * phandle <&gpio0 N ...>; port is locked to gpio0 in pmw3610.dtsi.
+/* ---- Trackball (PMW3610) pad -> nRF gpio (RIGHT half) --------------- *
+ * Same raw-nRF space. CS / IRQ are plain GPIO -> carry phandle + pin
+ * exactly like the matrix pads (so a port-1 trackball is just `&gpio1 xx`
+ * here, with no edit needed in pmw3610.dtsi).
  *
- * If your breakout wires the trackball through port-1 pins (P1.x):
- *   - Set the *_PORT macro below to 1, AND
- *   - Hand-edit cs-gpios / irq-gpios in pmw3610.dtsi from &gpio0 to &gpio1.
+ * SCK / MOSI / MISO are SPI *pinctrl* lines: NRF_PSEL() needs literal
+ * port and pin integers, not a phandle. They are the one unavoidable
+ * exception to the phandle form — still the same P0.xx space, just split
+ * into _PORT + _PIN. Builders rarely rewire these.
  *
- *   Macro                 nrf port,pin   pro_micro equiv      PMW3610 pad   role
- *   ----------------      ------------   -----------------    -----------   ----
- *   —                     —              VCC                  VCC           power
- *   R_PAD_TB_SCK_*        P0.08          pro_micro 0 (D0)     SCLK          SPI clock
- *   R_PAD_TB_MOSI_*       P0.17          pro_micro 2 (D2)     SDIO          SPI data (3-wire bidirectional)
- *   R_PAD_TB_CS_PIN       P0.20          pro_micro 3 (D3)     NCS           chip select
- *   R_PAD_TB_IRQ_PIN      P0.06          pro_micro 1 (D1)     MOTION        motion IRQ (hw MISO pad repurposed)
- *   —                     —              GND                  GND           ground
+ *   Macro            nRF pin   PMW3610 pad   role
+ *   --------------   -------   -----------   ----
+ *   R_PAD_TB_SCK_*   P0.08     SCLK          SPI clock
+ *   R_PAD_TB_MOSI_*  P0.17     SDIO          SPI data (3-wire bidir)
+ *   R_PAD_TB_CS      P0.20     NCS           chip select
+ *   R_PAD_TB_IRQ     P0.06     MOTION        motion IRQ (hw MISO pad)
  */
 #define R_PAD_TB_SCK_PORT    0
 #define R_PAD_TB_SCK_PIN     8
 #define R_PAD_TB_MOSI_PORT   0
 #define R_PAD_TB_MOSI_PIN   17
-#define R_PAD_TB_CS_PIN     20
-#define R_PAD_TB_IRQ_PIN     6
+#define R_PAD_TB_CS   &gpio0 20
+#define R_PAD_TB_IRQ  &gpio0 6
 
-/* ---- Matrix row → pad (consumed by charybdis.dtsi) ----------------- *
- * Shared dtsi references MATRIX_ROW{0..4}_PIN. Each side maps these to
- * its own pad macros so left and right can diverge.
+/* ---- Matrix row -> pad (consumed by charybdis.dtsi) ---------------- *
+ * Shared dtsi references MATRIX_ROW{0..4}_GPIO. Each side maps these to
+ * its own pad macros so left and right can diverge. Each macro expands
+ * to a full `&gpioX pin` gpio spec.
+ *
+ * charybdis-full is a 5-row board (adds the number row = row 4), so all
+ * five MATRIX_ROW*_GPIO are mapped here.
  */
-#define MATRIX_ROW0_PIN   R_PAD_R1
-#define MATRIX_ROW1_PIN   R_PAD_R2
-#define MATRIX_ROW2_PIN   R_PAD_R3
-#define MATRIX_ROW3_PIN   R_PAD_R4
-#define MATRIX_ROW4_PIN   R_PAD_R5
+#define MATRIX_ROW0_GPIO   R_PAD_R1
+#define MATRIX_ROW1_GPIO   R_PAD_R2
+#define MATRIX_ROW2_GPIO   R_PAD_R3
+#define MATRIX_ROW3_GPIO   R_PAD_R4
+#define MATRIX_ROW4_GPIO   R_PAD_R5
