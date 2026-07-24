@@ -1,0 +1,43 @@
+# Charybdis debug instrumentation options (config/ Zephyr module).
+
+config CHARYBDIS_HANG_CAPTURE
+	bool "Charybdis watchdog hang capture + boot replay"
+	depends on WATCHDOG && HWINFO
+	help
+	  Catch a CPU/scheduler HANG on the central half that a normal deferred
+	  USB log can never deliver (a stalled CPU never drains the log buffer,
+	  and a hang triggers no fault handler).
+
+	  A low-priority heartbeat thread feeds the hardware watchdog while the
+	  scheduler is healthy. A hang stops the feed; on watchdog timeout an ISR
+	  records a minimal fingerprint (uptime, the interrupted thread's name,
+	  best-effort stacked PC/LR) into a __noinit RAM struct, then the SoC
+	  resets. The reset is warm, so RAM is retained; at the next boot the
+	  captured fingerprint is logged as a HANGDUMP line over USB (the serial
+	  capture script's reconnect loop stitches it into the same logfile).
+
+	  The watchdog is set up with WDT_OPT_PAUSE_IN_SLEEP so it cannot fire
+	  during legitimate deep sleep (CONFIG_ZMK_SLEEP) — it only runs while the
+	  CPU is awake/spinning, which is exactly the hang we are hunting.
+
+	  DEBUG BUILD ONLY. Default n; enabled via -DCONFIG_CHARYBDIS_HANG_CAPTURE=y
+	  in the charybdis_right_debug build.yaml entry. Do not ship in the normal
+	  daily-driver build without a hardware smoke test first.
+
+config CHARYBDIS_HANG_CAPTURE_TIMEOUT_MS
+	int "Watchdog timeout (ms)"
+	depends on CHARYBDIS_HANG_CAPTURE
+	default 20000
+	help
+	  Watchdog window (awake time). Must be comfortably longer than the worst
+	  legitimate gap between heartbeat feeds under load, so normal operation
+	  never trips it. The hang is permanent, so a large value only delays
+	  detection, it does not miss the event. 20s is conservative.
+
+config CHARYBDIS_HANG_CAPTURE_FEED_MS
+	int "Heartbeat feed interval (ms)"
+	depends on CHARYBDIS_HANG_CAPTURE
+	default 4000
+	help
+	  How often the heartbeat thread feeds the watchdog. Must be well under
+	  the timeout (default 4s feed vs 20s timeout = 5x margin).

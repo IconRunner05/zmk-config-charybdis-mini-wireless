@@ -1,0 +1,9 @@
+name: charybdis_buildstamp
+build:
+  # Compile config/CMakeLists.txt into the firmware. Minimal on purpose: no
+  # `settings:` block, so shield/board discovery stays on ZMK's -DZMK_CONFIG
+  # path and is untouched. Adds build_stamp.c (boot fingerprint, always) and
+  # hang_capture.c (watchdog hang capture, gated by CONFIG_CHARYBDIS_HANG_CAPTURE
+  # from config/Kconfig).
+  cmake: .
+  kconfig: Kconfig
