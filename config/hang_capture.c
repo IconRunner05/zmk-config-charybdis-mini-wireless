@@ -59,6 +59,33 @@ static const struct device *const wdt = DEVICE_DT_GET(WDT_NODE);
 static int wdt_channel = -1;
 static volatile bool wdt_armed;
 
+/* Latched copy of a prior-boot capture, re-emitted several times a few seconds
+ * into boot. The one-shot init log (~0.36s) fires while the USB CDC console is
+ * still re-enumerating after the warm reset and is routinely dropped (observed:
+ * BUILDSTAMP + "armed" + HANGDUMP all lost in the 0.33-5s window while the host
+ * re-attached). Re-emitting past the feed interval, once USB is stable, reliably
+ * lands the line in the serial capture. */
+#define HANG_DUMP_REPLAYS 6
+static bool s_dump_pending;
+static bool s_dump_norecord; /* watchdog reset but ISR left no record */
+static uint32_t s_dump_uptime, s_dump_pc, s_dump_lr;
+static char s_dump_thread[sizeof(((struct hang_record *)0)->thread)];
+
+static void hang_dump_emit(unsigned int rep)
+{
+	if (s_dump_norecord) {
+		LOG_INF("HANGDUMP(%u/%u) watchdog reset, no captured record "
+			"(ISR did not run — likely IRQ storm / IRQs disabled)",
+			rep, HANG_DUMP_REPLAYS);
+	} else {
+		LOG_INF("HANGDUMP(%u/%u) prev-hang uptime=%ums thread='%s' "
+			"pc=0x%08x lr=0x%08x",
+			rep, HANG_DUMP_REPLAYS, s_dump_uptime,
+			s_dump_thread[0] != '\0' ? s_dump_thread : "?",
+			s_dump_pc, s_dump_lr);
+	}
+}
+
 /* WDT timeout ISR. Tiny window before reset — RAM writes only. */
 static void wdt_timeout_cb(const struct device *dev, int channel_id)
 {
@@ -109,30 +136,51 @@ static void hang_heartbeat(void *a, void *b, void *c)
 		k_sleep(K_MSEC(100));
 	}
 
+	unsigned int dump_reps = 0;
+
 	for (;;) {
 		(void)wdt_feed(wdt, wdt_channel);
+
+		/* Re-emit the boot replay a few times once USB is stable. The
+		 * first pass (~0.4s) is still lost to re-enumeration; passes at
+		 * ~feed intervals thereafter land. */
+		if (s_dump_pending && dump_reps < HANG_DUMP_REPLAYS) {
+			hang_dump_emit(++dump_reps);
+		}
+
 		k_sleep(K_MSEC(CONFIG_CHARYBDIS_HANG_CAPTURE_FEED_MS));
 	}
 }
 
-K_THREAD_DEFINE(hang_hb_tid, 512, hang_heartbeat, NULL, NULL, NULL,
+/* 768 (was 512): the periodic HANGDUMP re-emit adds a LOG_INF (with args) to
+ * this thread's deepest path; 512 left only ~128 bytes headroom. */
+K_THREAD_DEFINE(hang_hb_tid, 768, hang_heartbeat, NULL, NULL, NULL,
 		K_LOWEST_APPLICATION_THREAD_PRIO, 0, 0);
 
 static int hang_capture_init(void)
 {
-	/* 1. Replay a capture from a prior watchdog reset (warm reset kept RAM). */
+	/* 1. Latch a capture from a prior watchdog reset (warm reset kept RAM).
+	 *    The heartbeat thread re-emits it a few seconds in; logging it here
+	 *    (~0.36s) races USB re-enumeration and is routinely dropped. */
 	if (hang_rec.magic == HANG_MAGIC) {
-		LOG_INF("HANGDUMP prev-hang uptime=%ums thread='%s' pc=0x%08x lr=0x%08x",
-			hang_rec.uptime_ms,
-			hang_rec.thread[0] != '\0' ? hang_rec.thread : "?",
-			hang_rec.pc, hang_rec.lr);
+		s_dump_uptime = hang_rec.uptime_ms;
+		s_dump_pc = hang_rec.pc;
+		s_dump_lr = hang_rec.lr;
+
+		size_t i = 0;
+
+		for (; hang_rec.thread[i] != '\0' && i < sizeof(s_dump_thread) - 1; i++) {
+			s_dump_thread[i] = hang_rec.thread[i];
+		}
+		s_dump_thread[i] = '\0';
+		s_dump_pending = true;
 		hang_rec.magic = 0;
 	} else {
 		uint32_t cause = 0;
 
 		if (hwinfo_get_reset_cause(&cause) == 0 && (cause & RESET_WATCHDOG)) {
-			LOG_INF("HANGDUMP watchdog reset, no captured record "
-				"(ISR did not run — likely IRQ storm / IRQs disabled)");
+			s_dump_norecord = true;
+			s_dump_pending = true;
 		}
 		(void)hwinfo_clear_reset_cause();
 	}
