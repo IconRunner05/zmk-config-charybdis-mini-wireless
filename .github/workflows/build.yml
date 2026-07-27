@@ -1,5 +1,60 @@
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
+  # Upstream ZMK reusable build. Produces the .uf2 files and uploads them as a
+  # single artifact named "firmware" (the reusable workflow's default). The
+  # package job below repackages that into a branch+commit-labeled artifact so
+  # downloads never get mixed up across builds.
   build:
     uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@main
+
+  # Relabel + add a version index. Downloads the "firmware" artifact from the
+  # build job (same run), writes VERSION.md tying the folder back to an exact
+  # branch/commit, then re-uploads under charybdis-<branch>-<shortsha>. Grab
+  # THIS artifact, not the bare "firmware" one.
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          # Sanitize ref name for artifact naming (branch names / PR refs may
+          # contain '/', which is illegal in an artifact name).
+          echo "branch=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: firmware
+
+      - name: Write VERSION.md
+        run: |
+          {
+            echo "# Charybdis firmware build"
+            echo
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| branch | \`${GITHUB_REF_NAME}\` |"
+            echo "| commit | \`$(git rev-parse HEAD)\` |"
+            echo "| short | \`$(git rev-parse --short HEAD)\` |"
+            echo "| subject | $(git log -1 --pretty=%s) |"
+            echo "| built (UTC) | $(date -u '+%Y-%m-%d %H:%M:%S') |"
+            echo "| run | ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} |"
+            echo
+            echo "> The right-half debug build also self-reports this commit at boot:"
+            echo "> \`<inf> build_stamp: BUILDSTAMP git=ci-<shortsha> ...\` — cross-check it."
+            echo
+            echo "## Artifacts (sha256)"
+            echo '```'
+            ( cd firmware && sha256sum *.uf2 )
+            echo '```'
+          } > firmware/VERSION.md
+          cat firmware/VERSION.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: charybdis-${{ steps.meta.outputs.branch }}-${{ steps.meta.outputs.short_sha }}
+          path: firmware
