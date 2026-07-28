@@ -6,6 +6,8 @@ manifest:
       url-base: https://github.com/badjeff
     - name: m165437
       url-base: https://github.com/M165437
+    - name: iconrunner05
+      url-base: https://github.com/IconRunner05
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -14,9 +16,15 @@ manifest:
     - name: nice-view-gem
       remote: m165437
       revision: main
+    # Fork of badjeff/zmk-pmw3610-driver, pinned. Adds a backoff-retry on failed
+    # motion reads so a failed SPI burst read can't livelock the level-triggered
+    # IRQ. Root-caused 2026-07-28: a hang HANGDUMP'd as "watchdog reset, no
+    # captured record (ISR did not run — IRQ storm)" — a stuck trackball IRQ
+    # pegs the CPU at ISR priority, starving the scheduler and the WDT ISR.
+    # Repoint to badjeff@main once the fix lands upstream.
     - name: zmk-pmw3610-driver
-      remote: badjeff
-      revision: main
+      remote: iconrunner05
+      revision: 51b7f3757f29e896dddb5962b569c7dd22edc986
     - name: zmk-input-processor-report-rate-limit
       remote: badjeff
       revision: main
