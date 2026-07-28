@@ -64,6 +64,19 @@
         spi-max-frequency = <2000000>;
         irq-gpios = <R_PAD_TB_IRQ (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
+        /* DIAGNOSTIC (2026-07-28, TEMPORARY — revert after the hang test):
+         * Force the sensor permanently awake (never downshift to REST), so its
+         * SPI clock is always on. Tests the leading hang hypothesis: a rest->wake
+         * motion read issued while the sensor's SPI clock is still gated returns
+         * stale data and never clears the level-triggered MOTION line -> ISR-level
+         * storm the work-queue backoff fix can't see (no counters logged). If the
+         * hang STOPS with this set, that path is confirmed; if it persists, the
+         * trackball is cleared and the culprit is elsewhere (build the
+         * zero-latency WDT PC capture next). Boot log will show
+         * "Set performance register (reg value 0xf.)" / "enable performance mode"
+         * as confirmation it is active. Costs battery (never sleeps) — debug only. */
+        force-awake;
+
         /* Use this value to change the trackball sensitivity */
         cpi = <900>;
 
