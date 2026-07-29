@@ -47,6 +47,10 @@ config CHARYBDIS_TELEMETRY
 	depends on SHELL
 	select THREAD_RUNTIME_STATS
 	select SCHED_THREAD_USAGE
+	select HWINFO
+	select THREAD_MONITOR
+	select THREAD_STACK_INFO
+	select THREAD_NAME
 	help
 	  Register a `charybdis` shell subcommand set on the USB CDC so a host TUI
 	  (scripts/charybdis_dashboard.py) can poll `charybdis telem` for a
