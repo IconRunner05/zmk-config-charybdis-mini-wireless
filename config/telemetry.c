@@ -1,33 +1,36 @@
 /*
  * Charybdis USB telemetry + control (diagnostic instrumentation).
  *
- * Emits a periodic, machine-parseable TELEM line over the USB CDC console so a
- * host TUI (scripts/charybdis_dashboard.py) can render live health at a glance:
+ * A Zephyr shell subcommand set ("charybdis ...") on the RIGHT half's USB CDC
+ * lets a host TUI (scripts/charybdis_dashboard.py) poll live health and toggle
+ * the trackball power rail. The zmk-usb-logging snippet already points
+ * zephyr,shell-uart at that CDC ACM node, so enabling CONFIG_SHELL gives a
+ * command prompt with no extra device.
  *
- *   TELEM up=8231 batL=82 batR=76 vR=3810 cpu=3
- *     up   = uptime, seconds since boot
- *     batL = LEFT  (peripheral) battery %   (-1 until the first split report)
- *     batR = RIGHT (central)    battery %
- *     vR   = RIGHT battery millivolts       (-1 if the sensor read fails)
- *     cpu  = CPU busy % over the interval since the previous TELEM line
- *            (-1 on the first line — a busy% needs two runtime-stats samples)
- *
- * Two-way control. A Zephyr shell subcommand set ("charybdis ...") rides the
- * SAME USB CDC: the zmk-usb-logging snippet already points BOTH zephyr,console
- * and zephyr,shell-uart at that CDC ACM node, so enabling CONFIG_SHELL gives a
- * command prompt with no extra device. Logs auto-route through the shell log
- * backend, so TELEM lines and the prompt coexist on one port.
- *
- *   charybdis power on|off|toggle   toggle the EXT_POWER rail (trackball +
+ *   charybdis telem                 print one machine-parseable line:
+ *       TELEM up=<sec> batL=<pct> batR=<pct> vR=<mV> cpu=<pct>
+ *         up   = uptime, seconds since boot
+ *         batL = LEFT  (peripheral) battery %  (-1 until the first split report)
+ *         batR = RIGHT (central)    battery %
+ *         vR   = RIGHT battery millivolts      (-1 if the sensor read fails)
+ *         cpu  = CPU busy % since the previous `charybdis telem` call
+ *                (-1 on the first call — busy% needs two runtime-stats samples)
+ *   charybdis power on|off|toggle   switch the EXT_POWER rail (trackball +
  *                                   peripheral VCC) without unplugging
- *   charybdis telem                 force an immediate TELEM line
+ *   charybdis ver                   print VER git=<build desc>
+ *
+ * WHY POLLED, NOT LOGGED. When CONFIG_SHELL owns the USB CDC there is no active
+ * log backend on it (a bare LOG_INF goes nowhere), so telemetry is emitted with
+ * shell_print from the command handler — which runs on the shell thread, so the
+ * output is race-free. The host drives the cadence by re-issuing `charybdis
+ * telem` (see the dashboard's poll loop).
  *
  * Hardware limits (why the line is shaped this way):
  *   - nice!nano_v2 has NO fuel-gauge IC -> no current sensing. vR is voltage
  *     only; instantaneous draw is unmeasurable. Drain RATE is estimated
  *     host-side from the vR/batR slope over the session (see the dashboard).
  *   - The split protocol proxies the LEFT half's SoC (%) but not its voltage,
- *     so there is no vL — only batL.
+ *     so there is no vL -- only batL.
  *
  * DIAGNOSTIC BUILD ONLY -- gated by CONFIG_CHARYBDIS_TELEMETRY (default n),
  * enabled on the charybdis_right_telem artifact (build.yaml) and the local
@@ -39,11 +42,10 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <zephyr/init.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <drivers/ext_power.h>
@@ -52,14 +54,19 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
 
-LOG_MODULE_REGISTER(charybdis_telem, LOG_LEVEL_INF);
+/* Build fingerprint: defined for the whole config zephyr_library by
+ * config/CMakeLists.txt (zephyr_library_compile_definitions). Fallback keeps
+ * this translation unit independently compilable. */
+#ifndef CHARYBDIS_GIT_DESC
+#define CHARYBDIS_GIT_DESC "nogit"
+#endif
 
 /* LEFT (peripheral) battery %, latched from split battery reports. -1 = not yet
  * heard from the peripheral (no report since boot / peripheral disconnected). */
 static int s_bat_left = -1;
 
 /* CPU busy% is a delta metric: it needs the cycle counters from the PREVIOUS
- * sample. First emit reports -1 until this baseline exists. */
+ * `charybdis telem`. The first call reports -1 until this baseline exists. */
 static uint64_t s_prev_total; /* non-idle cycles at last sample */
 static uint64_t s_prev_exec;  /* idle+non-idle cycles at last sample */
 static bool s_have_prev;
@@ -125,24 +132,13 @@ static int cpu_busy_pct(void)
 	return pct;
 }
 
-static void telem_emit(void)
+static void telem_format(char *buf, size_t n)
 {
 	uint32_t up_s = (uint32_t)(k_uptime_get() / 1000);
 	int bat_r = zmk_battery_state_of_charge();
 
-	LOG_INF("TELEM up=%u batL=%d batR=%d vR=%d cpu=%d",
-		up_s, s_bat_left, bat_r, right_millivolts(), cpu_busy_pct());
-}
-
-static void telem_work_fn(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(telem_work, telem_work_fn);
-
-static void telem_work_fn(struct k_work *work)
-{
-	ARG_UNUSED(work);
-	telem_emit();
-	k_work_reschedule(&telem_work,
-			  K_MSEC(CONFIG_CHARYBDIS_TELEMETRY_INTERVAL_MS));
+	snprintf(buf, n, "TELEM up=%u batL=%d batR=%d vR=%d cpu=%d",
+		 up_s, s_bat_left, bat_r, right_millivolts(), cpu_busy_pct());
 }
 
 /* --- battery event listener: latch the LEFT (peripheral) SoC --------------- */
@@ -160,7 +156,18 @@ static int telem_listener(const zmk_event_t *eh)
 ZMK_LISTENER(charybdis_telem, telem_listener);
 ZMK_SUBSCRIPTION(charybdis_telem, zmk_peripheral_battery_state_changed);
 
-/* --- shell: `charybdis power on|off|toggle` / `charybdis telem` ------------- */
+/* --- shell: `charybdis telem | power on|off|toggle | ver` ------------------ */
+static int cmd_telem(const struct shell *sh, size_t argc, char **argv)
+{
+	char line[96];
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	telem_format(line, sizeof(line));
+	shell_print(sh, "%s", line);
+	return 0;
+}
+
 static int cmd_power(const struct shell *sh, size_t argc, char **argv)
 {
 	const struct device *ep = device_get_binding("EXT_POWER");
@@ -195,30 +202,19 @@ static int cmd_power(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-static int cmd_telem(const struct shell *sh, size_t argc, char **argv)
+static int cmd_ver(const struct shell *sh, size_t argc, char **argv)
 {
-	ARG_UNUSED(sh);
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
-	telem_emit();
+	shell_print(sh, "VER git=%s", CHARYBDIS_GIT_DESC);
 	return 0;
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_charybdis,
+	SHELL_CMD(telem, NULL, "print one TELEM health line", cmd_telem),
 	SHELL_CMD_ARG(power, NULL, "EXT_POWER rail: on|off|toggle", cmd_power, 2, 0),
-	SHELL_CMD(telem, NULL, "emit a TELEM line now", cmd_telem),
+	SHELL_CMD(ver, NULL, "print firmware build desc", cmd_ver),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(charybdis, &sub_charybdis, "Charybdis diagnostics/control", NULL);
-
-/* --- start the periodic emitter -------------------------------------------- */
-static int telem_init(void)
-{
-	/* First emit one interval in, by which point the battery sensor,
-	 * ext_power, and the split link have all come up. */
-	k_work_schedule(&telem_work,
-			K_MSEC(CONFIG_CHARYBDIS_TELEMETRY_INTERVAL_MS));
-	return 0;
-}
-SYS_INIT(telem_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 #endif /* CONFIG_CHARYBDIS_TELEMETRY */

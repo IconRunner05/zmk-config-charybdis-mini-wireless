@@ -41,8 +41,13 @@ BAUD = termios.B115200
 TELEM_RE = re.compile(
     r"TELEM\s+up=(\d+)\s+batL=(-?\d+)\s+batR=(-?\d+)\s+vR=(-?\d+)\s+cpu=(-?\d+)"
 )
-BUILDSTAMP_RE = re.compile(r"BUILDSTAMP\s+git=(\S+)")
+BUILDSTAMP_RE = re.compile(r"(?:BUILDSTAMP|VER)\s+git=(\S+)")
 EXTPOWER_RE = re.compile(r"EXTPOWER\s+state=(-?\d+)")
+
+# Telemetry is polled, not streamed: when CONFIG_SHELL owns the USB CDC there is
+# no active log backend, so the firmware prints TELEM only in response to a
+# `charybdis telem` shell command (config/telemetry.c). The host sets the pace.
+POLL_INTERVAL_S = 2.0
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 ALERT_RE = re.compile(r"HANGDUMP|PANIC|FAULT|assert|stack overflow", re.IGNORECASE)
 
@@ -85,6 +90,25 @@ class SerialLink:
         self.samples = deque(maxlen=DRAIN_MAX_SAMPLES)  # (uptime_s, pct, mV)
 
         threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._poll, daemon=True).start()
+
+    # --- poller: drive the firmware to emit ------------------------------
+    def _poll(self):
+        """Ask the firmware for a TELEM line on a fixed cadence, and for its
+        build id once per (re)connection. Commands run the shell_print on the
+        device's shell thread, so the output is race-free."""
+        asked_ver = False
+        while not self.stop:
+            with self.lock:
+                conn = self.connected
+            if conn:
+                if not asked_ver:
+                    self.send("charybdis ver")
+                    asked_ver = True
+                self.send("charybdis telem")
+            else:
+                asked_ver = False
+            time.sleep(POLL_INTERVAL_S)
 
     # --- connection -------------------------------------------------------
     def _open(self):
