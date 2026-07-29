@@ -298,39 +298,387 @@ class SerialLink:
         return {"pct_hr": pct_hr, "mv_hr": mv_hr, "hrs_left": hrs_left}
 
 
-# --- rendering ------------------------------------------------------------
+# --- color + formatting helpers -------------------------------------------
+# Color pairs: 1 green, 2 yellow, 3 red, 4 cyan(accent), 5 blue, 6 magenta.
+C_OK, C_WARN, C_BAD, C_ACCENT, C_INFO, C_ALT = 1, 2, 3, 4, 5, 6
+
+
+def C(pair, bold=False):
+    a = curses.color_pair(pair)
+    return a | curses.A_BOLD if bold else a
+
+
 def bar(pct, width):
     pct = max(0, min(100, pct))
     fill = int(round(pct / 100.0 * width))
-    return "[" + "█" * fill + "·" * (width - fill) + "]"
+    return "█" * fill + "░" * (width - fill)
 
 
-def cp(pct):
-    if pct < 0:
-        return curses.color_pair(0)
-    if pct <= 15:
-        return curses.color_pair(3)
-    if pct <= 35:
-        return curses.color_pair(2)
-    return curses.color_pair(1)
+def pct_pair(free_pct):
+    """Color for a 'higher is healthier' percentage (battery, stack headroom)."""
+    if free_pct < 0:
+        return 0
+    if free_pct <= 15:
+        return C_BAD
+    if free_pct <= 35:
+        return C_WARN
+    return C_OK
+
+
+def load_pair(load):
+    """Color for a 'higher is worse' percentage (CPU load)."""
+    if load < 0:
+        return 0
+    if load >= 80:
+        return C_BAD
+    if load >= 40:
+        return C_WARN
+    return C_OK
 
 
 def fmt_hms(sec):
     sec = int(sec)
     h, rem = divmod(sec, 3600)
     m, s = divmod(rem, 60)
-    return "%02d:%02d:%02d" % (h, m, s)
+    return "%d:%02d:%02d" % (h, m, s)
 
 
+def rssi_quality(r):
+    if r == RSSI_NA:
+        return "n/a", 0
+    if r >= -55:
+        return "excellent", C_OK
+    if r >= -67:
+        return "good", C_OK
+    if r >= -75:
+        return "fair", C_WARN
+    return "weak", C_BAD
+
+
+RESET_DESC = {
+    "POR": ("power-on", C_INFO),
+    "PIN": ("reset pin", C_INFO),
+    "SOFT": ("soft reboot", C_INFO),
+    "BOR": ("brownout", C_WARN),
+    "WDT": ("watchdog HANG", C_BAD),
+    "LOCKUP": ("CPU lockup", C_BAD),
+    "none": ("—", 0),
+}
+ACT_DESC = {
+    "ACTIVE": ("ACTIVE", "keys live", C_OK),
+    "IDLE": ("IDLE", "screen idle", C_WARN),
+    "SLEEP": ("SLEEP", "deep sleep", C_INFO),
+}
+
+
+def cpu_word(load):
+    if load < 0:
+        return "?"
+    if load < 10:
+        return "idle"
+    if load < 40:
+        return "light"
+    if load < 80:
+        return "busy"
+    return "HIGH"
+
+
+# --- low-level draw primitives (manual boxes on stdscr, no subwindows) -----
+def put(scr, y, x, text, attr=0):
+    H, W = scr.getmaxyx()
+    if y < 0 or y >= H or x < 0 or x >= W:
+        return
+    try:
+        scr.addnstr(y, x, text, W - 1 - x, attr)
+    except curses.error:
+        pass
+
+
+def box(scr, y, x, h, w, title, tattr):
+    """Draw a bordered panel; return the inner content x and first content y,
+    or None if it does not fit the screen."""
+    H, W = scr.getmaxyx()
+    if h < 3 or w < 6 or y < 0 or x < 0 or y + h > H or x + w > W:
+        return None
+    try:
+        scr.hline(y, x + 1, curses.ACS_HLINE, w - 2)
+        scr.hline(y + h - 1, x + 1, curses.ACS_HLINE, w - 2)
+        scr.vline(y + 1, x, curses.ACS_VLINE, h - 2)
+        scr.vline(y + 1, x + w - 1, curses.ACS_VLINE, h - 2)
+        scr.addch(y, x, curses.ACS_ULCORNER)
+        scr.addch(y, x + w - 1, curses.ACS_URCORNER)
+        scr.addch(y + h - 1, x, curses.ACS_LLCORNER)
+        scr.addch(y + h - 1, x + w - 1, curses.ACS_LRCORNER)
+    except curses.error:
+        pass
+    if title:
+        put(scr, y, x + 2, " " + title + " ", tattr | curses.A_BOLD)
+    return (x + 2, y + 1)
+
+
+def field(scr, cx, y, label, value, vattr=0, lw=13):
+    """One 'Label   value' row inside a panel."""
+    put(scr, y, cx, label.ljust(lw), curses.A_DIM)
+    put(scr, y, cx + lw, value, vattr)
+
+
+# --- panels ----------------------------------------------------------------
+def panel_battery(scr, y, x, w, s):
+    t = s["telem"]
+    inner = box(scr, y, x, 6, w, "POWER & BATTERY", C(C_ACCENT))
+    if inner is None:
+        return
+    cx, cy = inner
+    bw = max(6, w - 34)
+    br = iget(t, "batR", -1)
+    bl = iget(t, "batL", -1)
+    vr = iget(t, "vR", -1)
+    volts = "%.2fV" % (vr / 1000.0) if vr >= 0 else "  -  "
+    put(scr, cy, cx, "Right cell", curses.A_DIM)
+    put(
+        scr,
+        cy,
+        cx + 11,
+        "%3s%%  %s  %s" % (br if br >= 0 else "?", volts, bar(br, bw)),
+        C(pct_pair(br)),
+    )
+    put(scr, cy + 1, cx, "Left cell", curses.A_DIM)
+    put(
+        scr,
+        cy + 1,
+        cx + 11,
+        "%3s%%         %s" % (bl if bl >= 0 else "?", bar(bl, bw)),
+        C(pct_pair(bl)),
+    )
+    d = s["drain"]
+    if d is None:
+        drain_s, dattr = "gathering… (needs ~3 min)", curses.A_DIM
+    elif d["pct_hr"] < -0.05:
+        drain_s, dattr = "charging  (+%.1f %%/hr)" % -d["pct_hr"], C(C_OK)
+    else:
+        left = "→ ~%.0f h to empty" % d["hrs_left"] if d["hrs_left"] else ""
+        drain_s, dattr = "~%.1f %%/hr  %s" % (d["pct_hr"], left), 0
+    field(scr, cx, cy + 2, "Drain (est)", drain_s, dattr)
+    ep = s["extpower"]
+    eptxt, epattr = (
+        ("● ON", C(C_OK, True))
+        if ep == 1
+        else ("○ OFF", C(C_BAD, True))
+        if ep == 0
+        else ("? unknown", curses.A_DIM)
+    )
+    field(scr, cx, cy + 3, "Trackball rail", eptxt, epattr)
+
+
+def panel_link(scr, y, x, w, s):
+    t = s["telem"]
+    inner = box(scr, y, x, 8, w, "WIRELESS LINK (host)", C(C_ACCENT))
+    if inner is None:
+        return
+    cx, cy = inner
+    out = t.get("out", "?").upper()
+    prof = iget(t, "prof", -1)
+    pconn = iget(t, "pconn", 0)
+    field(scr, cx, cy, "Output", "%s   profile %s" % (out, prof))
+    field(
+        scr,
+        cx,
+        cy + 1,
+        "Connection",
+        "● connected" if pconn else "○ not connected",
+        C(C_OK) if pconn else C(C_BAD),
+    )
+    rssi = iget(t, "rssi", RSSI_NA)
+    q, qc = rssi_quality(rssi)
+    rtxt = "%d dBm  (%s)" % (rssi, q) if rssi != RSSI_NA else "n/a (USB only?)"
+    field(scr, cx, cy + 2, "Signal", rtxt, C(qc) if qc else curses.A_DIM)
+    ci, lat, sto = iget(t, "ci", 0), iget(t, "lat", 0), iget(t, "sto", 0)
+    field(
+        scr,
+        cx,
+        cy + 3,
+        "Interval",
+        "%.1f ms  (latency %d)" % (ci * 1.25, lat) if ci else "—",
+    )
+    field(
+        scr,
+        cx,
+        cy + 4,
+        "Supervision",
+        "%.1f s timeout" % (sto * 10 / 1000.0) if sto else "—",
+    )
+    periph = iget(t, "periph", 0)
+    field(
+        scr,
+        cx,
+        cy + 5,
+        "Split halves",
+        "%d peripheral linked" % periph if periph > 0 else "0 — LEFT down?",
+        C(C_OK) if periph > 0 else C(C_WARN),
+    )
+
+
+def panel_compute(scr, y, x, w, s):
+    t = s["telem"]
+    inner = box(scr, y, x, 5, w, "COMPUTE & THERMAL", C(C_ACCENT))
+    if inner is None:
+        return
+    cx, cy = inner
+    bw = max(6, w - 30)
+    cpu = iget(t, "cpu", -1)
+    put(scr, cy, cx, "CPU load".ljust(13), curses.A_DIM)
+    put(
+        scr,
+        cy,
+        cx + 13,
+        "%3s%% %s %s" % (cpu if cpu >= 0 else "?", bar(max(cpu, 0), bw), cpu_word(cpu)),
+        C(load_pair(cpu)),
+    )
+    temp = iget(t, "temp", TEMP_NA)
+    field(
+        scr,
+        cx,
+        cy + 1,
+        "Die temp",
+        "%.1f °C" % (temp / 10.0) if temp != TEMP_NA else "n/a (no driver)",
+    )
+    tbr = iget(t, "tbr", 0)
+    age = s["age"] or 0
+    rate = tbr / age if age > 0 else 0
+    field(scr, cx, cy + 2, "Trackball", "%d ev/poll   %.0f ev/s" % (tbr, rate))
+
+
+def panel_state(scr, y, x, w, s):
+    t = s["telem"]
+    inner = box(scr, y, x, 5, w, "STATE", C(C_ACCENT))
+    if inner is None:
+        return
+    cx, cy = inner
+    aname, anote, aattr = ACT_DESC.get(t.get("act"), ("?", "", 0))
+    field(
+        scr,
+        cx,
+        cy,
+        "Activity",
+        "%s  (%s)" % (aname, anote),
+        C(aattr) if aattr else curses.A_DIM,
+    )
+    rname, rattr = RESET_DESC.get(t.get("rst"), (t.get("rst", "?"), 0))
+    field(
+        scr,
+        cx,
+        cy + 1,
+        "Last reset",
+        "%s — %s" % (t.get("rst", "?"), rname),
+        C(rattr) if rattr else curses.A_DIM,
+    )
+    field(scr, cx, cy + 2, "HID endpoint", t.get("out", "?").upper())
+
+
+def render_header(scr, s, link, W):
+    inner = box(scr, 0, 0, 3, W, None, 0)
+    put(scr, 0, 2, " CHARYBDIS · right-half telemetry ", C(C_ACCENT, True))
+    if s["connected"]:
+        conn, cattr = "● Connected", C(C_OK, True)
+    else:
+        conn, cattr = "○ Waiting for device", C(C_BAD, True)
+    put(scr, 0, max(2, W - len(conn) - 3), conn, cattr)
+    if inner:
+        cx, cy = inner
+        t = s["telem"]
+        up = fmt_hms(iget(t, "up", 0)) if t else "—"
+        age = "%.1fs ago" % s["age"] if s["age"] else "—"
+        aattr = C(C_WARN) if (s["age"] and s["age"] > 12) else curses.A_DIM
+        put(scr, cy, cx, "firmware ", curses.A_DIM)
+        put(scr, cy, cx + 9, link.fw, C(C_INFO))
+        put(scr, cy, cx + 9 + len(link.fw) + 3, "uptime ", curses.A_DIM)
+        put(scr, cy, cx + 9 + len(link.fw) + 10, up)
+        put(scr, cy, cx + 9 + len(link.fw) + 10 + len(up) + 3, "updated ", curses.A_DIM)
+        put(scr, cy, cx + 9 + len(link.fw) + 10 + len(up) + 11, age, aattr)
+
+
+def render_footer(scr, s, H, W):
+    keys = "[p] power toggle   [o] on   [x] off   [s] threads   [q] quit"
+    put(scr, H - 1, 2, keys, C(C_INFO))
+    msg = s["last_msg"]
+    if msg:
+        put(scr, H - 1, max(2, W - len(msg) - 3), "› " + msg, curses.A_DIM)
+
+
+def render_main(scr, s, W):
+    y0 = 3
+    if W >= 84:
+        wl = (W - 1) // 2
+        wr = W - wl - 1
+        xr = wl + 1
+        panel_battery(scr, y0, 0, wl, s)
+        panel_compute(scr, y0 + 6, 0, wl, s)
+        panel_link(scr, y0, xr, wr, s)
+        panel_state(scr, y0 + 8, xr, wr, s)
+    else:
+        panel_battery(scr, y0, 0, W, s)
+        panel_link(scr, y0 + 6, 0, W, s)
+        panel_compute(scr, y0 + 14, 0, W, s)
+        panel_state(scr, y0 + 19, 0, W, s)
+
+
+def render_threads(scr, s, H, W):
+    rows = s["threads"]
+    h = max(4, H - 5)
+    inner = box(
+        scr, 3, 0, h, W, "THREADS · stack headroom (most-starved first)", C(C_ACCENT)
+    )
+    if inner is None:
+        return
+    cx, cy = inner
+    bw = max(8, W - 46)
+    put(
+        scr,
+        cy,
+        cx,
+        "%-18s %6s %6s  %-*s %5s"
+        % ("thread", "free", "size", bw, "stack used", "cpu%"),
+        curses.A_DIM,
+    )
+    if not rows:
+        put(scr, cy + 1, cx, "… requesting (charybdis threads)", curses.A_DIM)
+        return
+    for i, r in enumerate(rows):
+        ry = cy + 1 + i
+        if ry >= 3 + h - 1:
+            put(
+                scr,
+                ry,
+                cx,
+                "… %d more (enlarge window)" % (len(rows) - i),
+                curses.A_DIM,
+            )
+            break
+        size = r["size"] or 1
+        free_pct = 100.0 * r["free"] / size
+        used = bar(100 - free_pct, bw)
+        put(
+            scr,
+            ry,
+            cx,
+            "%-18s %6d %6d  %s %4.0f%%"
+            % (r["name"][:18], r["free"], r["size"], used, r["cpu"]),
+            C(pct_pair(free_pct)),
+        )
+
+
+# --- main loop -------------------------------------------------------------
 def draw(stdscr, link):
     curses.curs_set(0)
     stdscr.nodelay(True)
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_GREEN, -1)
-    curses.init_pair(2, curses.COLOR_YELLOW, -1)
-    curses.init_pair(3, curses.COLOR_RED, -1)
-    curses.init_pair(4, curses.COLOR_CYAN, -1)
+    curses.init_pair(C_OK, curses.COLOR_GREEN, -1)
+    curses.init_pair(C_WARN, curses.COLOR_YELLOW, -1)
+    curses.init_pair(C_BAD, curses.COLOR_RED, -1)
+    curses.init_pair(C_ACCENT, curses.COLOR_CYAN, -1)
+    curses.init_pair(C_INFO, curses.COLOR_BLUE, -1)
+    curses.init_pair(C_ALT, curses.COLOR_MAGENTA, -1)
 
     mode = "main"
     while True:
@@ -352,182 +700,25 @@ def draw(stdscr, link):
         s = link.snapshot()
         stdscr.erase()
         H, W = stdscr.getmaxyx()
+        if H < 12 or W < 40:
+            put(stdscr, 0, 0, "Window too small — enlarge.", C(C_WARN))
+            stdscr.refresh()
+            time.sleep(0.2)
+            continue
 
-        def line(y, x, text, attr=0):
-            if 0 <= y < H:
-                stdscr.addnstr(y, x, text, max(0, W - x - 1), attr)
-
-        cyan = curses.color_pair(4)
-        line(0, 2, "CHARYBDIS TELEMETRY", cyan | curses.A_BOLD)
-        conn = "● connected" if s["connected"] else "○ waiting"
-        line(0, W - 16, conn, curses.color_pair(1 if s["connected"] else 3))
-        line(1, 2, "port %s   fw %s" % (link.port, s["fw"]), curses.A_DIM)
+        render_header(stdscr, s, link, W)
         if s["alert"]:
-            line(2, 2, "⚠ " + s["alert"], curses.color_pair(3) | curses.A_BOLD)
-
-        if mode == "threads":
-            draw_threads(line, s, H, cyan)
+            put(stdscr, 3, 2, "⚠ FAULT: " + s["alert"], C(C_BAD, True))
+            render_footer(stdscr, s, H, W)
+        elif mode == "threads":
+            render_threads(stdscr, s, H, W)
+            render_footer(stdscr, s, H, W)
         else:
-            draw_main(line, s, cyan)
+            render_main(stdscr, s, W)
+            render_footer(stdscr, s, H, W)
 
         stdscr.refresh()
         time.sleep(0.25)
-
-
-def draw_main(line, s, cyan):
-    t = s["telem"]
-    y = 4
-    line(y, 2, "── BATTERY ─────────────────────────────", cyan)
-    y += 1
-    if t:
-        br, vr, bl = iget(t, "batR", -1), iget(t, "vR", -1), iget(t, "batL", -1)
-        volts = "%.3f V" % (vr / 1000.0) if vr >= 0 else "  ?  "
-        line(
-            y,
-            4,
-            "RIGHT %3s%%  %-8s %s" % (br if br >= 0 else "?", volts, bar(br, 16)),
-            cp(br),
-        )
-        y += 1
-        line(
-            y,
-            4,
-            "LEFT  %3s%%           %s" % (bl if bl >= 0 else "?", bar(bl, 16)),
-            cp(bl),
-        )
-        y += 1
-        d = s["drain"]
-        if d is None:
-            line(y, 4, "drain  … gathering", curses.A_DIM)
-        elif d["pct_hr"] < -0.05:
-            line(
-                y,
-                4,
-                "drain  ↑ charging (+%.1f %%/hr)" % -d["pct_hr"],
-                curses.color_pair(1),
-            )
-        else:
-            left = "~%.1f h left" % d["hrs_left"] if d["hrs_left"] else "—"
-            line(
-                y,
-                4,
-                "drain  ~%.1f %%/hr  ~%d mV/hr  %s" % (d["pct_hr"], d["mv_hr"], left),
-            )
-        y += 2
-
-        line(y, 2, "── LINK ────────────────────────────────", cyan)
-        y += 1
-        prof, pconn = iget(t, "prof", -1), iget(t, "pconn", 0)
-        rssi = iget(t, "rssi", RSSI_NA)
-        out = t.get("out", "?")
-        rssi_s = ("%d dBm" % rssi) if rssi != RSSI_NA else "n/a"
-        pc = curses.color_pair(1) if pconn else curses.color_pair(3)
-        line(
-            y,
-            4,
-            "host  %s  prof %s  %s   RSSI %s"
-            % (out.upper(), prof, "●conn" if pconn else "○down", rssi_s),
-            pc,
-        )
-        y += 1
-        ci, lat, sto = iget(t, "ci", 0), iget(t, "lat", 0), iget(t, "sto", 0)
-        line(
-            y,
-            4,
-            "conn  int %d (%.1fms)  lat %d  sto %d (%.1fs)"
-            % (ci, ci * 1.25, lat, sto, sto * 10 / 1000.0),
-        )
-        y += 1
-        periph = iget(t, "periph", 0)
-        pcolor = curses.color_pair(1) if periph > 0 else curses.color_pair(2)
-        line(
-            y,
-            4,
-            "split peripheral links: %d %s"
-            % (periph, "up" if periph > 0 else "(LEFT down?)"),
-            pcolor,
-        )
-        y += 2
-
-        line(y, 2, "── SYSTEM ──────────────────────────────", cyan)
-        y += 1
-        cpu = iget(t, "cpu", -1)
-        temp = iget(t, "temp", TEMP_NA)
-        temp_s = ("%.1f°C" % (temp / 10.0)) if temp != TEMP_NA else "n/a"
-        line(
-            y,
-            4,
-            "CPU %3s%% %s   temp %s"
-            % (cpu if cpu >= 0 else "?", bar(max(cpu, 0), 12), temp_s),
-            cp(100 - cpu if cpu >= 0 else -1),
-        )
-        y += 1
-        act = {"A": "ACTIVE", "I": "IDLE", "S": "SLEEP"}.get(t.get("act"), "?")
-        line(y, 4, "activity %s    reset: %s" % (act, t.get("rst", "?")))
-        y += 1
-        tbr = iget(t, "tbr", 0)
-        age = s["age"] or 0
-        rate = tbr / age if age > 0 else 0
-        line(
-            y,
-            4,
-            "uptime %s   trackball %d (%.0f/s)"
-            % (fmt_hms(iget(t, "up", 0)), tbr, rate),
-        )
-        y += 1
-        aattr = curses.color_pair(2) if age > 12 else curses.A_DIM
-        line(y, 4, "last update %.1fs ago" % age, aattr)
-        y += 2
-    else:
-        line(y, 4, "-- waiting for TELEM --", curses.A_DIM)
-        y += 2
-
-    ep = s["extpower"]
-    eptxt = "ON" if ep == 1 else "OFF" if ep == 0 else "?"
-    epattr = curses.color_pair(1 if ep == 1 else 3 if ep == 0 else 0)
-    line(y, 2, "── CONTROL ─────────────────────────────", cyan)
-    y += 1
-    line(y, 4, "EXT_POWER (trackball): ")
-    line(y, 27, eptxt, epattr | curses.A_BOLD)
-    y += 1
-    line(y, 4, "[p]toggle [o]on [x]off   [s]threads   [q]uit", curses.A_NORMAL)
-    y += 1
-    if s["last_msg"]:
-        line(y, 4, "› " + s["last_msg"], curses.A_DIM)
-
-
-def draw_threads(line, s, H, cyan):
-    rows = s["threads"]
-    y = 4
-    line(y, 2, "── THREADS (stack-starved first) ───────", cyan)
-    y += 1
-    line(
-        y,
-        4,
-        "%-18s %11s  %5s  %s" % ("name", "free/size", "cpu%", "stack"),
-        curses.A_DIM,
-    )
-    y += 1
-    if not rows:
-        line(y, 4, "… requesting (charybdis threads)", curses.A_DIM)
-    for r in rows:
-        if y >= H - 2:
-            line(y, 4, "… %d more" % (len(rows) - (y - 6)), curses.A_DIM)
-            break
-        size = r["size"] or 1
-        used_pct = 100 * (size - r["free"]) / size
-        # color by headroom: red if <15% free, yellow if <30%
-        free_pct = 100 * r["free"] / size
-        attr = cp(free_pct)
-        line(
-            y,
-            4,
-            "%-18s %5d/%-5d  %4.0f%%  %s"
-            % (r["name"][:18], r["free"], r["size"], r["cpu"], bar(used_pct, 14)),
-            attr,
-        )
-        y += 1
-    line(H - 1, 2, "[s] back   [q] quit", curses.A_DIM)
 
 
 def main():
