@@ -41,3 +41,32 @@ config CHARYBDIS_HANG_CAPTURE_FEED_MS
 	help
 	  How often the heartbeat thread feeds the watchdog. Must be well under
 	  the timeout (default 4s feed vs 20s timeout = 5x margin).
+
+config CHARYBDIS_TELEMETRY
+	bool "Charybdis USB telemetry + control"
+	depends on SHELL
+	select THREAD_RUNTIME_STATS
+	select SCHED_THREAD_USAGE
+	help
+	  Emit a periodic machine-parseable TELEM line over the USB CDC console
+	  (uptime, both halves' battery %, right-half millivolts, CPU busy%) for a
+	  host TUI (scripts/charybdis_dashboard.py), and register a `charybdis`
+	  shell subcommand set on the same USB CDC to toggle the EXT_POWER rail
+	  (`charybdis power on|off|toggle`) and force a line (`charybdis telem`).
+
+	  Requires the zmk-usb-logging snippet (it points both zephyr,console and
+	  zephyr,shell-uart at the USB CDC) plus CONFIG_SHELL=y. THREAD_RUNTIME_STATS
+	  and SCHED_THREAD_USAGE are selected here so the CPU busy% is always
+	  available. No fuel gauge exists on nice!nano_v2, so no current is measured
+	  — the host estimates drain rate from the voltage/SoC slope.
+
+	  DIAGNOSTIC BUILD ONLY. Default n; enabled on the charybdis_right_telem
+	  build.yaml entry and the `make telem` target.
+
+config CHARYBDIS_TELEMETRY_INTERVAL_MS
+	int "Telemetry emit interval (ms)"
+	depends on CHARYBDIS_TELEMETRY
+	default 5000
+	help
+	  How often a TELEM line is emitted. Battery and CPU load move slowly, so
+	  5s keeps the serial stream and the CPU busy% window sensible.

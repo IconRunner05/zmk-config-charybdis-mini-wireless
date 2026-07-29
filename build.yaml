@@ -81,5 +81,21 @@ include:
       -DCONFIG_WATCHDOG=y
       -DCONFIG_HWINFO=y
       -DCONFIG_CHARYBDIS_HANG_CAPTURE=y
+  # --- TELEMETRY build: live diagnostics dashboard over USB ---
+  # Right half (central) with the zmk-usb-logging snippet (USB CDC console +
+  # deferred logging) PLUS a Zephyr shell on the same CDC. config/telemetry.c
+  # emits a periodic parseable TELEM line (uptime, both halves' battery %,
+  # right-half mV, CPU busy%) that scripts/charybdis_dashboard.py renders as a
+  # live TUI, and registers `charybdis power on|off|toggle` to switch the
+  # EXT_POWER (trackball) rail over USB. Separate from charybdis_right_debug so
+  # the hang-hunt instrumentation stays isolated from this diagnostic build.
+  # Flash to the RIGHT half, tether via USB, run the dashboard script.
+  - board: nice_nano@2//zmk
+    shield: charybdis_right
+    snippet: zmk-usb-logging
+    artifact-name: charybdis_right_telem
+    cmake-args: >-
+      -DCONFIG_SHELL=y
+      -DCONFIG_CHARYBDIS_TELEMETRY=y
   - board: nice_nano@2//zmk
     shield: settings_reset

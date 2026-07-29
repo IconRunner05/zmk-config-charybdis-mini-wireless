@@ -33,3 +33,6 @@ RESET_SHIELD ?= settings_reset
 LEFT_UF2     := $(LEFT_SHIELD)-$(BOARD)-zmk.uf2
 RIGHT_UF2    := $(RIGHT_SHIELD)-$(BOARD)-zmk.uf2
 RESET_UF2    := $(RESET_SHIELD)-$(BOARD)-zmk.uf2
+# Diagnostic telemetry build (see `make telem`): distinct name so it never
+# overwrites the daily-driver right .uf2 in firmware/.
+TELEM_UF2    := $(RIGHT_SHIELD)-$(BOARD)-zmk-telem.uf2

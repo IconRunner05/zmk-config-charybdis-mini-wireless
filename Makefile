@@ -109,7 +109,7 @@ endef
 # Targets
 # =============================================================================
 
-.PHONY: help init update build left right reset pristine clean firmware
+.PHONY: help init update build left right reset telem pristine clean firmware
 
 help: ## Show this help
 	@echo ""
@@ -234,6 +234,30 @@ reset: ## Build settings_reset flasher (RESET_UF2, see keyboard.mk)
 	@cp "$(FIRMWARE_STAGE)/$(RESET_UF2)" \
 		"$(FIRMWARE_DIR)/$(RESET_UF2)"
 	@echo "✓ Reset → $(FIRMWARE_DIR)/$(RESET_UF2)"
+	@echo ""
+
+telem: ## Build right-half TELEMETRY diagnostic firmware (USB dashboard + shell control → TELEM_UF2)
+	$(call check_init)
+	$(call sync_config)
+	@echo ""
+	@echo "→ Building $(RIGHT_SHIELD) (zmk-usb-logging + telemetry/shell control)"
+	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
+	$(DOCKER_BUILD) west build \
+		-s /workspace/zmk/app \
+		-d /workspace/build/$(RIGHT_SHIELD)_telem \
+		-b '$(BUILD_BOARD)' \
+		-S "zmk-usb-logging" \
+		-- \
+		-DZMK_CONFIG=/workspace/config \
+		-DSHIELD="$(RIGHT_SHIELD)" \
+		-DCONFIG_SHELL=y \
+		-DCONFIG_CHARYBDIS_TELEMETRY=y
+	$(DOCKER_CP) cp /workspace/build/$(RIGHT_SHIELD)_telem/zephyr/zmk.uf2 \
+		/firmware/$(TELEM_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(TELEM_UF2)" \
+		"$(FIRMWARE_DIR)/$(TELEM_UF2)"
+	@echo "✓ Telemetry → $(FIRMWARE_DIR)/$(TELEM_UF2)"
+	@echo "  Flash to the RIGHT half, tether USB, run: ./scripts/charybdis_dashboard.py"
 	@echo ""
 
 # ─── Cache Management ─────────────────────────────────────────────────────────

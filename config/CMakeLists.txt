@@ -8,6 +8,9 @@ zephyr_library_sources(build_stamp.c)
 # Watchdog hang capture — compiled only when CONFIG_CHARYBDIS_HANG_CAPTURE=y
 # (config/Kconfig). Debug build only; see build.yaml charybdis_right_debug.
 zephyr_library_sources_ifdef(CONFIG_CHARYBDIS_HANG_CAPTURE hang_capture.c)
+# USB telemetry + shell control — compiled only when CONFIG_CHARYBDIS_TELEMETRY=y
+# (config/Kconfig). Diagnostic build only; see build.yaml charybdis_right_telem.
+zephyr_library_sources_ifdef(CONFIG_CHARYBDIS_TELEMETRY telemetry.c)
 
 # git describe of THIS repo, best-effort. CMAKE_CURRENT_LIST_DIR is the config/
 # dir; when built locally git walks up to the repo-root .git. --always yields a
