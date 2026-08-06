@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: MIT
  */
  
+/* Per-side breakout map MUST come before charybdis.dtsi so the shared
+ * dtsi sees MATRIX_ROW*_GPIO definitions for this half. */
+#include "breakout_right.dtsi"
 #include "charybdis.dtsi"
 #include "pmw3610.dtsi"
-#include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <dt-bindings/zmk/input_transform.h>
 
 
@@ -19,12 +21,13 @@
 };
 
 &kscan0 {
+	/* Col pins reference pad macros from breakout_right.dtsi. */
 	col-gpios
-		= <&pro_micro 19 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro 20 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro 7 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
-		, <&pro_micro 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		= <R_PAD_C1 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <R_PAD_C2 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <R_PAD_C3 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <R_PAD_C4 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <R_PAD_C5 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
+		, <R_PAD_C6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>
 		;
 };

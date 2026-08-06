@@ -1,0 +1,61 @@
+/*
+ * LEFT-half breakout board pad map.
+ *
+ * ONE numbering space: raw nRF pins. Every pad macro carries the gpio
+ * controller phandle AND pin (e.g. `&gpio0 24`), so "24" always means
+ * P0.24 — no Pro-Micro D-number translation to get wrong. To wire a pad,
+ * read the nRF pin (P0.xx / P1.xx) printed on the nice!nano pad and put
+ * `&gpio0 xx` (port 0) or `&gpio1 xx` (port 1) here.
+ *
+ * The macro NAME is your PCB silkscreen pad label; the VALUE is the
+ * nice!nano nRF pin it is wired to.
+ *
+ *   Pad        nRF pin    role              Pro-Micro pad (reference only)
+ *   --------   --------   ---------------   -----------------------------
+ *   L_PAD_R1   P0.31      row 0 (TAB)       21
+ *   L_PAD_R2   P1.15      row 1 (ESC)       18
+ *   L_PAD_R3   P0.24      row 2 (LGUI/Z)     5
+ *   L_PAD_R4   P0.22      row 3 (thumbs)     4
+ *   L_PAD_R5   P1.06      row 4 (number)     9
+ *   L_PAD_C1   P0.02      col 0             19
+ *   L_PAD_C2   P0.29      col 1             20
+ *   L_PAD_C3   P0.09      col 2             10
+ *   L_PAD_C4   P1.00      col 3              6
+ *   L_PAD_C5   P0.11      col 4              7
+ *   L_PAD_C6   P1.04      col 5              8
+ *
+ * The left half has no trackball (charybdis_left.overlay disables &spi0
+ * and &trackball; pmw3610.dtsi supplies inert defaults).
+ *
+ * Rename the L_PAD_* identifiers to match the silkscreen if useful
+ * (e.g. L_PAD_J3). If you rename, sweep MATRIX_ROW*_GPIO below and the
+ * col-gpios in charybdis_left.overlay.
+ */
+
+/* ---- Matrix pad -> nRF gpio (LEFT half) ---------------------------- */
+#define L_PAD_R1   &gpio0 31
+#define L_PAD_R2   &gpio1 15
+#define L_PAD_R3   &gpio0 24
+#define L_PAD_R4   &gpio0 22
+#define L_PAD_R5   &gpio1 6
+
+#define L_PAD_C1   &gpio0 2
+#define L_PAD_C2   &gpio0 29
+#define L_PAD_C3   &gpio0 9
+#define L_PAD_C4   &gpio1 0
+#define L_PAD_C5   &gpio0 11
+#define L_PAD_C6   &gpio1 4
+
+/* ---- Matrix row -> pad (consumed by charybdis.dtsi) ---------------- *
+ * Shared dtsi references MATRIX_ROW{0..4}_GPIO. Each side maps these to
+ * its own pad macros so left and right can diverge. Each macro expands
+ * to a full `&gpioX pin` gpio spec.
+ *
+ * charybdis-full is a 5-row board (adds the number row = row 4), so all
+ * five MATRIX_ROW*_GPIO are mapped here.
+ */
+#define MATRIX_ROW0_GPIO   L_PAD_R1
+#define MATRIX_ROW1_GPIO   L_PAD_R2
+#define MATRIX_ROW2_GPIO   L_PAD_R3
+#define MATRIX_ROW3_GPIO   L_PAD_R4
+#define MATRIX_ROW4_GPIO   L_PAD_R5
