@@ -62,7 +62,7 @@ distinct layouts, not one layout rotated — the compositions differ.
 | # | Fork | Status |
 |---|---|---|
 | F1 | Broadcaster: ready-made kit (Option B) vs own ext-adv set (Option C) | **Deferred to Phase 3.** Leaning C — the kit reaches into ZMK's connectable advertising rather than opening a separate set, which couples the display feature to host pairing. Blocked on whether the kit's keyboard side even compiles on ZMK v0.2.1 (see R1). |
-| F2 | Orientation abstraction: compile-time vs runtime vs two artifacts | Out for blind ruling. |
+| ~~F2~~ | Orientation abstraction | **RULED** — compile-time Kconfig choice, two CI artifacts. See below. |
 
 ## Open risks
 
@@ -253,6 +253,117 @@ do not want (WPM arrives at offset 24).
 **No existing nice!view scanner exists.** All Prospector forks surveyed use the
 ST7789 round LCD; the one alternative port (`dhruvinsh/zmk-prospector`) is
 ST7735S. This combination would be the first.
+
+---
+
+## D5 — Orientation architecture (ruling on F2)
+
+Derived blind from constraints, verified against LVGL `release/v9.3` and Zephyr
+`v4.1-branch` sources.
+
+### The three findings that decide it
+
+**1. `lv_draw_sw_rotate` has no 1-bit case.** `src/draw/sw/lv_draw_sw_utils.c`
+handles only `L8`, `RGB565`, `RGB888`, `ARGB8888`, `XRGB8888`. No `I1`. This is
+*why* ZMK's nice_view widget uses L8 canvases — the comment "L8 is the smallest
+type supported by sw_rotate" is literally true. Rotating via LVGL forces an **8x
+memory inflation** over the 1bpp we actually need.
+
+**2. LVGL 9.3 display-level rotation is unusable here.** `lv_display_set_rotation()`
+only stores a field and recomputes resolution — it performs no pixel work. The
+core render path rotates only under `lv_display_set_matrix_rotation()`, which
+requires render mode `DIRECT` or `FULL`, but Zephyr's glue registers the display
+as `PARTIAL`; and the matrix path routes through the SW transform code, which
+also has no I1 case. It would fail **silently** — a correctly-laid-out scene
+rendered into a mis-shaped buffer.
+
+> Rotation must therefore happen either **above** LVGL (ZMK's canvas approach) or
+> **below** it (a custom flush callback). There is no supported middle path at 1bpp.
+
+**3. SPI is not the constraint — an earlier assumption in this project was wrong.**
+A full 160x68 frame is `1 + 68*22 + 2 = 1499 bytes` = ~**12 ms** at 1 MHz =
+**1.2% duty at 1 Hz**. Full-frame repaints are not a battery or correctness
+problem. BLE scan duty cycle will dominate power by an order of magnitude. The
+goal is *zero repaints in the steady state* because they are free to avoid — not
+because they are expensive to do.
+
+### The ruling
+
+**Compile-time Kconfig `choice`, exposed through a runtime vtable, shipped as two
+CI artifacts.**
+
+Runtime switching is rejected on a decisive argument: **the device has no keys and
+never accepts a connection.** There is no input channel through which a user could
+ever flip a setting. It would be dead code behind an NVS write. Reflashing to
+change orientation is a one-minute operation on a device you have physically
+picked up and reoriented anyway.
+
+- **Landscape: no rotation at any level.** Native 160x68, stock glue, stock flush
+  cb. Zero incremental RAM, full partial-update support.
+- **Portrait: rotate *below* LVGL** in a custom flush callback operating on 1bpp
+  data. Render I1 natively into a 68x160 buffer; a hand-written bit-rotation
+  blits into panel order.
+- **Do not use ZMK's square-canvas approach.** Keep it documented as fallback only.
+
+| Approach | RAM |
+|---|---|
+| Landscape, native | ~2.7 KB |
+| Portrait, flush-level rotation | ~3.3 KB |
+| Portrait, ZMK L8 canvases | **~21 KB** |
+
+Beyond RAM, the canvas approach also loses LVGL layout (content must be composed
+inside 68x68 tiles hard-positioned with magic offsets; nothing may straddle a
+boundary) and loses partial redraw (any pixel invalidates a whole 68x68 region,
+which the mono rounder widens to full panel width → the entire screen).
+
+The larger win: **portrait and landscape become the same program** — same widgets,
+same objects, same invalidation machinery. Only `(hor_res, ver_res)`, the
+composition module, and one flush callback differ.
+
+### Partial-update contract
+
+`ls0xx.c` reports `SCREEN_INFO_X_ALIGNMENT_WIDTH` only, and `ls0xx_write()`
+rejects any `desc->width != PANEL_WIDTH`. **The only partial granularity that
+exists is a full-width horizontal band of scanlines.**
+
+Consequence — and this is non-obvious: **portrait inverts the cost model.** After
+rotation, logical x maps to panel *y*. So an element's *horizontal* extent
+determines cost and its vertical extent is free. Since portrait is naturally a
+stack of full-width rows, **every portrait update is a full frame** (~12 ms).
+Accept it; start with render mode `FULL`.
+
+In landscape the band structure is load-bearing, not cosmetic: keeping each
+volatile field in its own horizontal band bounds its invalidation to ~10-22 rows.
+Never place a *tall changing* object — it forces all 68 rows for a 1px change.
+
+### Font ruling
+
+At 1bpp there is **no antialiasing**; Montserrat 14's thin strokes drop out
+entirely. Use **`lv_font_unscii_8`** (a bitmap font designed for 1bpp) for all
+small text, and **Montserrat 18 only** for the single large layer digit.
+68px portrait = **8 characters per line** at unscii_8 — the 16-char layer name
+consumes exactly two lines with zero margin.
+
+### Highest-risk step, to be isolated
+
+The portrait rotating flush callback has four independent ways to produce a subtly
+wrong screen: byte bit-order (inferred LSB-first from the *absence* of
+`SCREEN_INFO_MONO_MSB_FIRST`), `MONO01` polarity, the 8-byte I1 palette header,
+and stride alignment. Note LVGL reads I1 **MSB-first**, so there is a bit reversal
+inside every byte. Validate with an asymmetric test pattern (draw an "F") before
+wiring any real layout. Write it as an obviously-correct slow loop first;
+optimise only once it is on screen.
+
+### Build order
+
+1. Data model + Kconfig skeleton (no hardware dependency)
+2. Landscape end-to-end against a **fake data source** — validates fonts, widgets,
+   and redraw masking before any BLE exists
+3. BLE observer + packet decode; swap out the fake source
+4. Staleness timer + no-signal screen
+5. Portrait flush cb, **validated in isolation**
+6. Portrait composition, reusing widgets unchanged
+7. `build.yaml` → two artifacts
 
 ---
 
