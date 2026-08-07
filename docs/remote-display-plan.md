@@ -350,16 +350,56 @@ sum of everything else combined**.
 > **Relaxing scan duty is worth 10-20x alone.** 100% ≈ 4.3 days; 20% ≈ 19 days;
 > 5% ≈ 59 days. Cut the scan first — only then does blanking earn its keep.
 
-### The highest-leverage knob is on the keyboard, and it is free
+### The advertising-interval knob — a power TRANSFER, not a free win
 
-For a fixed ~1 s wake: a 1000 ms beacon forces 100% duty (4.8 mA); a **200 ms**
-beacon allows 20% duty (0.96 mA); a 100 ms beacon allows 10% (0.48 mA).
+**Corrected 2026-08-07.** An earlier revision of this section called this the
+"highest-leverage knob, and it is free." That was wrong in two ways and the
+wording was actively misleading. Restated properly:
 
-**A 5x cut in the keyboard's active advertising interval buys a 5x cut in scanner
-radio current at identical wake latency.** Cost on the central: roughly +40 µA.
+**Direction, stated plainly:** shortening the advertising interval from 1000 ms to
+200 ms means the keyboard advertises **five times more often** — 5 beacons/sec
+instead of 1. It is an *increase* in keyboard radio activity, not a reduction.
 
-`CONFIG_ZMK_STATUS_ADV_ACTIVE_INTERVAL_MS` is an **existing upstream Kconfig** —
-configuration, not a fork.
+**Why that helps the scanner** — the counterintuitive part. A scanner catches a
+beacon only if one lands inside a scan window, so with random relative phase:
+
+```
+wake latency ≈ advertising_interval / scan_duty
+```
+
+For a fixed ~1 s wake target: a 1000 ms beacon forces **100%** scan duty (one
+chance per second, cannot afford to miss it); a 200 ms beacon allows **20%**; a
+100 ms beacon allows **10%**. More beacons means more chances, so the listener can
+sleep through most of them and still catch one in time.
+
+**The trade, both sides:**
+
+| | 1000 ms beacon | 200 ms beacon | Delta |
+|---|---|---|---|
+| Central (keyboard) | ~10 µA | ~50 µA | **+40 µA** |
+| Scanner radio | ~4800 µA | ~960 µA | **−3840 µA** |
+
+So it buys ~4x the scanner's battery life at a cost of roughly **10-20% of the
+central's**, against a typical few-hundred-µA ZMK baseline on a small split LiPo.
+
+**This is not free, and its correct direction is not obvious.** Per D7 the owner
+has explicitly flagged central power as a concern, and the central is already the
+heaviest-radio half and the one carrying the unresolved hang. The scanner, by
+contrast, is a desk device that can be USB-powered or carry a far larger cell.
+
+> **If the display is USB-powered, its draw is irrelevant and the correct setting
+> is the SLOWEST advertising interval the wake latency tolerates** — minimising
+> central cost. That is the opposite of what the earlier revision recommended.
+>
+> **Only if the display runs on battery** does spending central power to buy
+> scanner runtime make sense, and even then it is the owner's call, not a default.
+
+**Open question for the owner:** how is the display powered — USB, or battery? That
+single answer sets this knob's direction. Do not pick a default without it.
+
+`CONFIG_ZMK_STATUS_ADV_ACTIVE_INTERVAL_MS` is an **existing upstream Kconfig**, so
+either direction is configuration rather than a fork. *That* — and only that — was
+the sense in which the earlier "free" claim was true.
 
 **Refines F1:** owning the broadcaster is worth *one bit* (a dedicated ACTIVE flag
 in `status_flags` 0x40) and one line of code. *Configuring* the broadcaster — which
