@@ -81,7 +81,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  *   y=1   band A  layer name / number        | endpoint + BLE profile (right)
  *   y=15  band B  left-half battery
  *   y=26  band C  right-half battery
- *   y=40  band D  modifiers                  | caps-word              (right)
+ *   y=40  band D  modifiers | STALE marker   | caps-word              (right)
  *   y=53  band E  WPM                        | keyboard id            (right)
  *
  * Bands A and D each hold two labels because those pairs tend to change
@@ -174,6 +174,7 @@ struct dispscan_ui {
     lv_obj_t *lbl_batt_l;
     lv_obj_t *lbl_batt_r;
     lv_obj_t *lbl_mods;
+    lv_obj_t *lbl_stale;
     lv_obj_t *lbl_caps;
     lv_obj_t *lbl_wpm;
     lv_obj_t *lbl_kbid;
@@ -230,7 +231,40 @@ static bool peek_pending(struct dispscan_status *out);
 #define FAKE_MARKER_TEXT "FAKE"
 #endif /* CONFIG_DISPSCAN_FAKE_SOURCE */
 
-#define AWAKE_OBJ_COUNT 8
+/* -------------------------------------------------------------------------
+ * STALENESS MARKER — the second state axis, made visible.
+ *
+ * `link` says WHICH SCREEN to draw; `freshness` says whether the values on it
+ * are current. They are independent (see the two-axes block in
+ * dispscan_status.h), and before this label there was nowhere to put the
+ * second one -- the panel could show a perfectly plausible AWAKE composition
+ * whose numbers were 80 seconds old with no indication whatsoever.
+ *
+ * It must read as neither DARK nor NO_SIGNAL, and it does: DARK is an all-black
+ * frame with every label hidden, NO_SIGNAL is the normal field carrying two
+ * centred lines, and this is the normal composition plus five characters.
+ *
+ * GEOMETRY, re-derived rather than assumed (unscii_8 = 8 px advance, exactly):
+ *   band D left  "MOD C.AG"  8 chars = 64 px at x=MARGIN(2)  -> x=2..66
+ *   THIS         "STALE"     5 chars = 40 px at x=74         -> x=74..114
+ *   band D right "CAPS"      4 chars = 40-ish, right-aligned at -MARGIN
+ *                                                             -> x=118..158
+ * Gaps: 8 px to the modifiers, 4 px to CAPS. Nothing else lives in band D and
+ * no other label moves.
+ *
+ * Band D rather than band A because band A's spare space is already claimed by
+ * the FAKE marker, and while the two are mutually exclusive by Kconfig today,
+ * sharing a slot would make that exclusion load-bearing for LAYOUT as well as
+ * behaviour. Band D is empty in the middle in every configuration.
+ *
+ * NEEDS ON-GLASS RE-VERIFICATION. Every other number in this file was checked
+ * against a real panel; this one is derived from the same font metrics but has
+ * not yet been photographed.
+ * ------------------------------------------------------------------------- */
+#define STALE_MARKER_X 74
+#define STALE_MARKER_TEXT "STALE"
+
+#define AWAKE_OBJ_COUNT 9
 
 /* Everything that is visible only in AWAKE, so state switching is one loop.
  * Filled on each call rather than cached because the pointers are only valid
@@ -244,6 +278,11 @@ static void collect_awake_objs(lv_obj_t *objs[AWAKE_OBJ_COUNT]) {
     objs[5] = ui.lbl_caps;
     objs[6] = ui.lbl_wpm;
     objs[7] = ui.lbl_kbid;
+    /* In the AWAKE set on purpose: a staleness marker on a DARK or NO_SIGNAL
+     * screen would be answering a question the user is not asking, and in
+     * NO_SIGNAL it would be actively wrong -- there is nothing stale, there is
+     * nothing at all. */
+    objs[8] = ui.lbl_stale;
 }
 
 static void set_hidden(lv_obj_t *obj, bool hidden) {
@@ -537,6 +576,7 @@ lv_obj_t *zmk_display_status_screen() {
     ui.lbl_batt_l = make_label(ui.screen, LV_ALIGN_TOP_LEFT, MARGIN, BAND_B_Y);
     ui.lbl_batt_r = make_label(ui.screen, LV_ALIGN_TOP_LEFT, MARGIN, BAND_C_Y);
     ui.lbl_mods = make_label(ui.screen, LV_ALIGN_TOP_LEFT, MARGIN, BAND_D_Y);
+    ui.lbl_stale = make_label(ui.screen, LV_ALIGN_TOP_LEFT, STALE_MARKER_X, BAND_D_Y);
     ui.lbl_caps = make_label(ui.screen, LV_ALIGN_TOP_RIGHT, -MARGIN, BAND_D_Y);
     ui.lbl_wpm = make_label(ui.screen, LV_ALIGN_TOP_LEFT, MARGIN, BAND_E_Y);
     ui.lbl_kbid = make_label(ui.screen, LV_ALIGN_TOP_RIGHT, -MARGIN, BAND_E_Y);
@@ -636,6 +676,14 @@ static void render_awake(const struct dispscan_status *s, bool force) {
     if (force || s->modifiers != ui.last.modifiers) {
         fmt_mods(buf, sizeof(buf), s->modifiers);
         set_text(ui.lbl_mods, buf);
+    }
+
+    if (force || s->freshness != ui.last.freshness) {
+        /* Blank rather than a "LIVE" counterpart: the steady state is fresh, and
+         * a label that is present 99% of the time trains the eye straight past
+         * the 1% that matters. Same reasoning as CAPS below. */
+        set_text(ui.lbl_stale,
+                 (s->freshness == DISPSCAN_FRESH_LIVE) ? "" : STALE_MARKER_TEXT);
     }
 
     if (force || s->caps_word != ui.last.caps_word) {

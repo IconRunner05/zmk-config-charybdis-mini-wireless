@@ -141,6 +141,24 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
     }
 
     /*
+     * THE SECOND STATE AXIS. `freshness` is independent of `link` (see the
+     * two-axes block in dispscan_status.h), so it gets its own sweep rather
+     * than tracking the state above -- if it followed `link` the fake source
+     * would be demonstrating a coupling the real system does not have.
+     *
+     * Every fourth AWAKE tick is stale, which is what puts the "STALE" marker
+     * on the glass for a human to check. That marker's geometry is the one
+     * number in custom_status_screen.c that has NOT been photographed on a
+     * real panel, and this is the only way to photograph it before a
+     * broadcaster exists.
+     */
+    s->freshness = ((a % 4) == 3) ? DISPSCAN_FRESH_IDLE : DISPSCAN_FRESH_LIVE;
+
+    /* Plausible desk-range RSSI, swept so the field is visibly populated in a
+     * log even though nothing draws it. -40 dBm to -95 dBm. */
+    s->rssi = (int8_t)(-40 - (int)(a % 56));
+
+    /*
      * Batteries: 0,20,40,60,80,100 and its mirror. Both sequences INCLUDE 0,
      * which is the wire contract's "N/A" and the case most likely to be
      * rendered wrong (as a flat battery). Both also hit 100, the 3-digit

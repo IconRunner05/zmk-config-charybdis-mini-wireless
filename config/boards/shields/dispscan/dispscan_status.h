@@ -65,14 +65,94 @@
 #define DISPSCAN_MOD_ALT (1u << 2)
 #define DISPSCAN_MOD_GUI (1u << 3)
 
-/* Wire `profile_slot` is `[6]`=dev, `[5:3]`=patch, `[2:0]`=profile, so the
- * decoded value is always 0..7 and in practice 0..4 (ZMK's profile count). */
-#define DISPSCAN_PROFILE_MAX 4
+/*
+ * Highest profile slot the renderer will print as a number rather than "BT?".
+ *
+ * Wire `profile_slot` is `[6]`=dev, `[5:3]`=patch, `[2:0]`=profile, so the
+ * decoded value is always 0..7; how many of those are REAL is a property of
+ * the KEYBOARD's CONFIG_ZMK_BLE_PROFILE_COUNT, which — like the central side —
+ * is not on the wire.
+ *
+ * It used to be a bare `4`, i.e. ZMK's default profile count hardcoded into
+ * the scanner (plan doc, review finding #5): a keyboard built with 5 profiles
+ * renders "BT?" for slot 5, which looks like a decoder bug and is not one.
+ * Now a Kconfig, so mirroring the keyboard is a config line rather than a
+ * source edit. Still a mirror of a value the wire does not carry — the same
+ * class of hidden coupling as the battery swap, and worth the same suspicion.
+ */
+#define DISPSCAN_PROFILE_MAX CONFIG_DISPSCAN_PROFILE_MAX
 
 /*
- * Display states — D6, as amended by D9 (see docs/remote-display-plan.md,
- * "What survives of D6"). These drive ONLY what is drawn; since the display is
- * USB-powered they no longer drive scan parameters, which are constant.
+ * ===================== TWO AXES, NOT ONE — READ THIS =====================
+ *
+ * The plan doc's render-slice review, deferred finding #2, is explicit that
+ * this header USED TO CONFLATE TWO INDEPENDENT THINGS into one enum:
+ *
+ *   AXIS 1 — FRESHNESS. "How long since I heard a packet." A property of the
+ *            RADIO LINK. LIVE / IDLE / LOST.
+ *   AXIS 2 — KEYBOARD ACTIVITY. "Is a human typing on it." A property of the
+ *            KEYBOARD, inferred from advertising CADENCE (the broadcaster
+ *            switches between a ~1 s active interval and a ~30 s idle one).
+ *
+ * They are genuinely orthogonal, and the case that proves it is ordinary: a
+ * keyboard sitting untouched for 60 s is still beaconing happily at its idle
+ * cadence. On axis 1 that is IDLE-with-a-staleness-marker (we last heard it up
+ * to 30 s ago); on axis 2 it is heading for DARK. One enum could express
+ * either but not both, so the observer would have had to pick one to lie about.
+ *
+ * MODEL CHOSEN: keep both, and derive a third value for the renderer.
+ *
+ *   `freshness`  raw axis 1                     — drives the STALE marker
+ *   `link`       the RESOLVED SCREEN to draw    — drives which composition
+ *
+ * `link` stays exactly as it was (AWAKE / DARK / NO_SIGNAL), so the renderer's
+ * state machine is unchanged and the render slice's on-glass validation still
+ * holds. It is now explicitly a DERIVED field, computed once in dispscan_link.c
+ * as:
+ *
+ *   freshness == LOST            -> NO_SIGNAL   (nothing heard; data is junk)
+ *   else keyboard inactive       -> DARK        (heard fine; nobody is typing)
+ *   else                         -> AWAKE
+ *
+ * NO_SIGNAL beats DARK when both apply: "the keyboard is gone" is strictly more
+ * important than "the keyboard is idle", and D8 is explicit that the two must
+ * never be confused. The three screens stay visually distinct: DARK is an
+ * all-black frame with nothing on it, NO_SIGNAL is the normal field carrying
+ * "-- NO SIGNAL --", and AWAKE-but-stale is the normal composition plus a
+ * "STALE" marker. Three meanings, three appearances.
+ *
+ * WHY NOT COLLAPSE THEM. A single 4-value enum (AWAKE/STALE/DARK/NO_SIGNAL)
+ * was considered and rejected: it cannot represent "dark AND stale", which is
+ * the steady state of a keyboard that has been idle for minutes, and the
+ * renderer would then have to reconstruct the missing axis from nothing.
+ */
+
+/*
+ * AXIS 1 — how long since a matching packet was heard. Thresholds are
+ * Kconfig-tunable; defaults are D8's ("Three liveness states").
+ */
+enum dispscan_freshness {
+    /** Heard within CONFIG_DISPSCAN_LIVE_MS (default 5 s). */
+    DISPSCAN_FRESH_LIVE = 0,
+    /** Older than that but within CONFIG_DISPSCAN_LOST_MS (default 90 s).
+     *  Values are still believed correct and are still SHOWN -- never zero out
+     *  last-known values, a battery reading of 0% is worse than a stale one --
+     *  but the panel carries a staleness marker. This window must span the
+     *  keyboard's ~30 s idle cadence or a board merely sitting there reads as
+     *  gone. */
+    DISPSCAN_FRESH_IDLE,
+    /** Nothing for CONFIG_DISPSCAN_LOST_MS. The data fields are meaningless.
+     *  Also the boot state, before anything has ever been heard. */
+    DISPSCAN_FRESH_LOST,
+};
+
+/*
+ * THE RESOLVED SCREEN — D6, as amended by D9 (see docs/remote-display-plan.md,
+ * "What survives of D6"). Drives ONLY what is drawn; since the display is
+ * USB-powered these no longer drive scan parameters, which are constant.
+ *
+ * DERIVED from `freshness` plus inferred keyboard activity — see the block
+ * above. A producer must not invent it independently of `freshness`.
  *
  * The renderer must handle all three from day one. The fake source cycles
  * through all three precisely so that DARK and NO_SIGNAL are proven to render
@@ -94,8 +174,31 @@ enum dispscan_link_state {
  * a mutex rather than a pointer with a lifetime problem.
  */
 struct dispscan_status {
-    /** Which of the three D6 screens to draw. Valid in every state. */
+    /** Which of the three D6 screens to draw. DERIVED — see the two-axes block
+     *  above. Valid in every state. */
     enum dispscan_link_state link;
+
+    /** Axis 1, raw. Drives the staleness marker, which must stay visually
+     *  distinct from BOTH the DARK frame and the NO_SIGNAL screen. */
+    enum dispscan_freshness freshness;
+
+    /*
+     * RSSI of the packet this status came from, in dBm (Zephyr's
+     * bt_le_scan_recv_info.rssi, zephyr/include/zephyr/bluetooth/bluetooth.h).
+     *
+     * Carried because the plan doc's review finding #4 records its absence as
+     * BLOCKING two ratified behaviours, not as a nice-to-have: D8's discovery
+     * mode is defined as "render the keyboard_id of the STRONGEST keyboard it
+     * hears", and the two-keyboard rule needs a strength comparison to break a
+     * tie. Both live in dispscan_observer.c, which is why this field is set
+     * there and not by the decoder -- signal strength is a property of the
+     * radio, not of the payload.
+     *
+     * 0 is not a legal RSSI in practice (it would be 0 dBm at the antenna) and
+     * is what a producer with no radio leaves here; the renderer does not
+     * currently draw it, so no geometry depends on it.
+     */
+    int8_t rssi;
 
     /*
      * Raw wire `version` byte (offset 4), unpacked with DISPSCAN_VERSION_MAJOR /

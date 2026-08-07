@@ -22,4 +22,31 @@ if(CONFIG_ZMK_DISPLAY)
   # timer, the work item and their stacks cost nothing in the shipping image.
   # The renderer has no reference to this file, so dropping it still links.
   zephyr_library_sources_ifdef(CONFIG_DISPSCAN_FAKE_SOURCE dispscan_fake_source.c)
+
+  # The real thing: radio -> decoder -> link state -> renderer. Three files
+  # because they are three jobs (plan doc, review finding #6) and each is
+  # separately reviewable:
+  #   dispscan_packet.c   pure bytes-in/struct-out, no kernel objects
+  #   dispscan_link.c     the free-running liveness timer, no radio
+  #   dispscan_observer.c the scan callback and the D8 binding decision
+  #
+  # All three are gated on the SAME symbol rather than three, because they are
+  # useless apart -- the decoder with nothing feeding it, the link timer with
+  # nothing to time. Mutual exclusion with the fake source is enforced in
+  # Kconfig (`depends on !DISPSCAN_OBSERVER`), not here, so it holds for anyone
+  # reading menuconfig rather than CMake.
+  #
+  # With both symbols n, only custom_status_screen.c compiles: the renderer
+  # links, nothing ever calls dispscan_status_update(), and the panel shows NO
+  # SIGNAL -- which for a scanner that is not scanning is the honest answer.
+  zephyr_library_sources_ifdef(CONFIG_DISPSCAN_OBSERVER
+    dispscan_packet.c
+    dispscan_link.c
+    dispscan_observer.c
+  )
+
+  # Proves the decoder without a radio. See the banner in the file: no
+  # broadcaster exists yet, so this is currently the ONLY exercise the six
+  # decoder traps get. Nested under the observer by Kconfig, not here.
+  zephyr_library_sources_ifdef(CONFIG_DISPSCAN_DECODE_SELFTEST dispscan_decode_test.c)
 endif()
