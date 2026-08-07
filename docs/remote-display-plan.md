@@ -132,7 +132,7 @@ Constraints that shape the answer:
 
 | # | Fork | Status |
 |---|---|---|
-| F1 | Broadcaster: ready-made kit (Option B) vs own ext-adv set (Option C) | **Deferred to Phase 3.** Leaning C — the kit reaches into ZMK's connectable advertising rather than opening a separate set, which couples the display feature to host pairing. Blocked on whether the kit's keyboard side even compiles on ZMK v0.2.1 (see R1). |
+| F1 | Broadcaster: ready-made kit (Option B) vs own ext-adv set (Option C) | **Still open — deferred to Phase 3.** Architecturally C, per D7. But a **verified Zephyr blocker** now conditions it (see below), and the evidence base for B is not yet trustworthy (see the research-integrity note). Do not rule this until the outstanding investigations are re-run. |
 | ~~F2~~ | Orientation abstraction | **RULED** — compile-time Kconfig choice, two CI artifacts. See below. |
 
 ## Open risks
@@ -233,6 +233,72 @@ ZMK's CMake guard excludes its sources, and supply our own
 **Shield order matters:** the shield defining `nice_view_spi` must be listed
 before `nice_view` → `shield: charybdis_scanner nice_view`. The board-specific
 overlay must be named `boards/xiao_ble_nrf52840_zmk.overlay`.
+
+---
+
+## F1 — verified Zephyr blocker for Option C on ZMK v0.2.1
+
+**Two concurrent advertising sets can hard-assert on Zephyr 3.5.**
+
+Zephyr issue **#71608** — *"Bluetooth: Controller: Multiple Broadcaster asserts when
+each of them overlap over time"* — fixed by **PR #71611**, which **merged 26 April
+2024**. Zephyr **v3.5.0 released October 2023**, so the fix predates nothing: it is
+**six months too late to be in v3.5.0**, and ZMK v0.2.1 pins Zephyr 3.5.
+*(Independently verified: PR and issue numbers, merge date, and the release timeline.)*
+
+Mechanism: when multiple advertising sets overlap in time, applying the random
+advertising delay needs more ticker operation context than is available;
+`ticker_update()` returns failure and the `LL_ASSERT` in `ticker_update_rand()`
+fires → hard fault and reset. v3.5.0's `ull_adv.c` calls `ticker_update_rand()`
+unconditionally on every adv event of every set; the fix gates it behind
+`ticker_update_req == ticker_update_ack`.
+
+**This is exactly the two-concurrent-set configuration Option C requires, on exactly
+the version we run.**
+
+Consequences:
+- Option C on v0.2.1 is **conditional on cherry-picking PR #71611** onto the Zephyr
+  fork. Reported as small and confined to `ull_adv.c` — **unverified**, needs costing.
+- Adding a known-unfixed controller assertion to the half already under hang
+  investigation violates D2's one-variable-at-a-time discipline. An assert produces
+  a *reset*, which is a different signature from the no-banner hang — but
+  introducing it mid-investigation is exactly the mistake D2 exists to prevent.
+- Phase 3 stays behind the Phase 2 soak, as planned.
+
+**Related footgun:** `ull_adv.c` initialises `lll.tx_pwr_lvl = RADIO_TXP_DEFAULT`
+only `#if !defined(CONFIG_BT_CTLR_ADV_EXT)`. So enabling
+`BT_CTLR_TX_PWR_DYNAMIC_CONTROL` alongside `BT_CTLR_ADV_EXT` **silently drops
+advertising from +8 dBm to 0 dBm** until a VS write is issued per set. Also
+`BT_CTLR_ADV_EXT=y` with `BT_EXT_ADV=n` is a broken combination — the controller
+answers Command Disallowed to legacy adv commands. Flip them together.
+
+RAM cost of ext-adv estimated at **~0.85 kB** with `CONFIG_BT_CTLR_ADV_AUX_SET=0`
+(~1.3 kB without). Flash cost unmeasured.
+
+**First move when Phase 3 opens:** enable `BT_EXT_ADV=y` *alone*, with no beacon
+code, and confirm the keyboard still pairs, reconnects, and holds its split link.
+That isolates the controller question from the feature.
+
+### Research-integrity note — read before trusting the F1 evidence base
+
+One research lane **fabricated evidence** in an internal report: commit SHAs, dates,
+commit-message quotes, upstream issue quotations, and source line-number citations,
+all invented, on the questions of *why upstream abandoned ext-adv* and *the ZMK
+v0.2.1 event/module API surface*. It self-reported and retracted.
+
+**None of that material reached this document** — the retracted claims were never
+recorded. But two consequences stand:
+
+1. **We currently have no real evidence on why upstream retreated from ext-adv.**
+   That was to be a load-bearing input to F1. It must be re-investigated from
+   scratch.
+2. **The ZMK v0.2.1 event/module surface for D7's extractable module is unverified.**
+   Re-derive before designing against it.
+
+The Zephyr blocker above survived because it was **re-verified independently** —
+against the PR page and the release timeline — rather than taken on report.
+Apply the same standard to anything else that decides hardware behaviour on the
+half carrying the unresolved hang.
 
 ---
 
