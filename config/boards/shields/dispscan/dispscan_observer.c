@@ -206,6 +206,13 @@ static bool select_keyboard(uint32_t id, int8_t rssi, int64_t now) {
             sel.id = id;
             goto accept;
         }
+        /* Discovery decides on RSSI alone, so the hit counter means nothing on
+         * this path -- clear it rather than leaving it to accumulate to
+         * UINT8_MAX. Harmless today; a trap for anyone who later adds a rule
+         * that reads challenger_hits and reasonably assumes it counts only
+         * where it is used. */
+        sel.challenger = 0;
+        sel.challenger_hits = 0;
         return false;
     }
 
@@ -318,7 +325,14 @@ int dispscan_observer_start(void) {
      * therefore an RSSI in a struct we can pass around). */
     err = bt_le_scan_start(&scan_param, NULL);
     if (err) {
-        LOG_ERR("dispscan: bt_le_scan_start failed (%d) -- the panel will sit on NO SIGNAL", err);
+        /* Unregister before returning. Leaving the callback registered against
+         * a scan that never started strands it: nothing would ever invoke it,
+         * and a later retry would call bt_le_scan_cb_register() a second time
+         * on the same node -- Zephyr keeps registered callbacks in an intrusive
+         * sys_slist, so re-adding a node already on the list corrupts it. The
+         * retry path below depends on this cleanup being correct. */
+        bt_le_scan_cb_unregister(&scan_cb);
+        LOG_ERR("dispscan: bt_le_scan_start failed (%d) -- retrying; panel stays on NO SIGNAL", err);
         return err;
     }
 
@@ -357,24 +371,48 @@ int dispscan_observer_start(void) {
 static void start_work_cb(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(start_work, start_work_cb);
 
+/*
+ * Retry cadence. The fast phase covers the expected case (a future async
+ * bt_enable() taking a moment); the slow phase exists because LATCHING OFF
+ * PERMANENTLY IS THE WRONG FAILURE MODE for this device.
+ *
+ * A scanner that gave up 10 seconds after boot looks identical, forever, to a
+ * scanner whose keyboard is switched off: both show NO SIGNAL. There is no
+ * front panel, no key to press and no host to complain to, so the only way out
+ * would be a power cycle the user has no reason to suspect is needed. Retrying
+ * slowly costs one work-queue wakeup per 5 s and makes the failure recoverable
+ * on its own.
+ */
 #define START_RETRY_MS 500
-#define START_RETRY_MAX 20
+#define START_RETRY_SLOW_MS 5000
+#define START_RETRY_FAST_MAX 20
 
 static int start_attempts;
 
 static void start_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
 
+    k_timeout_t backoff =
+        (start_attempts < START_RETRY_FAST_MAX) ? K_MSEC(START_RETRY_MS) : K_MSEC(START_RETRY_SLOW_MS);
+
     if (!bt_is_ready()) {
-        if (++start_attempts > START_RETRY_MAX) {
-            LOG_ERR("dispscan: Bluetooth never became ready; observer disabled");
-            return;
+        /* Log once at the fast/slow boundary rather than every tick: by this
+         * point something is genuinely wrong and a 5 s heartbeat of identical
+         * errors would bury whatever else the console has to say. */
+        if (++start_attempts == START_RETRY_FAST_MAX) {
+            LOG_ERR("dispscan: Bluetooth not ready after %d ms; retrying every %d ms",
+                    START_RETRY_FAST_MAX * START_RETRY_MS, START_RETRY_SLOW_MS);
         }
-        k_work_schedule(&start_work, K_MSEC(START_RETRY_MS));
+        k_work_schedule(&start_work, backoff);
         return;
     }
 
-    (void)dispscan_observer_start();
+    if (dispscan_observer_start() != 0) {
+        /* dispscan_observer_start() has already unregistered its callback, so
+         * rescheduling re-enters cleanly rather than double-registering. */
+        start_attempts++;
+        k_work_schedule(&start_work, backoff);
+    }
 }
 
 static int dispscan_observer_init(void) {
