@@ -109,11 +109,38 @@
  *   forbids and which would silently break on any ZMK bump. Not done.
  *
  *   IF THIS MODULE STOPS RUNNING (crash, k_work starvation, symbol turned
- *   off), the worst state it can leave behind is "our non-connectable beacon
- *   is running". ZMK's very next CHECKED_ADV_STOP or CHECKED_OPEN_ADV path
- *   calls bt_le_adv_stop(), which clears the set regardless of who started it.
- *   We never leave a connectable advertisement behind and we never modify
- *   ZMK's state.
+ *   off) WHILE HOLDING THE SET, the state it leaves behind is "our
+ *   non-connectable beacon is running, forever". THERE IS NO RECOVERY PATH.
+ *
+ *   An earlier version of this comment claimed ZMK's next CHECKED_ADV_STOP or
+ *   CHECKED_OPEN_ADV would clear the set. THAT WAS FALSE, and it was the
+ *   load-bearing half of the "worst case is benign" argument. Checked against
+ *   the pinned tree (v0.2.1, app/src/ble.c:158-164), CHECKED_OPEN_ADV is
+ *   exactly:
+ *
+ *       err = bt_le_adv_start(ZMK_ADV_CONN_NAME, zmk_ble_ad, ...);
+ *       if (err) { LOG_ERR(...); return err; }
+ *       advertising_status = ZMK_ADV_CONN;
+ *
+ *   -- no bt_le_adv_stop(). And CHECKED_ADV_STOP (ble.c:134-140) is only
+ *   reached from the two `desired == ZMK_ADV_NONE && CURR_ADV(CONN|DIR)`
+ *   cases, i.e. only when ZMK believes it is itself advertising -- which, by
+ *   construction, it does not while we hold the set. So neither macro runs.
+ *
+ *   CONSEQUENCES OF THE STUCK-BEACON STATE, STATED PLAINLY: the keyboard
+ *   becomes unpairable (every CHECKED_OPEN_ADV returns -EALREADY and ZMK does
+ *   not retry), the display keeps rendering a frozen payload that still looks
+ *   LIVE, and the radio runs at 100% duty against D9's power budget.
+ *
+ *   WHAT ACTUALLY BOUNDS THIS: nothing in software. It is accepted because the
+ *   module has no allocation, no unbounded state, and exactly one delayable
+ *   work item whose every return path re-arms it -- so "stops running" means
+ *   "the whole system is wedged", which is already fatal on its own terms.
+ *   A power cycle clears it. If that ever stops being an acceptable bound, the
+ *   fix is a hardware watchdog, not a comment.
+ *
+ *   We still never leave a CONNECTABLE advertisement behind, and we never
+ *   modify ZMK's state.
  */
 
 #include <string.h>
@@ -277,8 +304,16 @@ static bool conn_cb_registered;
 static uint32_t keyboard_id;
 static uint8_t peripheral_batt; /* wire offset 12 -- the OTHER half */
 
-/* Split link tracking. `split_down_since` is the uptime at which the split
- * stopped being fully connected; UINT32 forever-ago means "connected". */
+/* Split link tracking.
+ *
+ * `split_down_since` is the k_uptime_get() value at which the split stopped
+ * being fully connected. There is NO sentinel -- an earlier comment here
+ * described a "UINT32 forever-ago" one that the code has never implemented.
+ * The value is only ever read inside split_ok(), and only when
+ * `split_connected` is false, so its content while the split is up is
+ * irrelevant and the zero-initialised value at boot is never consulted on a
+ * path that could act on it. `split_connected` is the actual state variable;
+ * `split_down_since` is just the timestamp that goes with the false case. */
 static bool split_connected;
 static int64_t split_down_since;
 
@@ -413,6 +448,13 @@ static void build_payload(void) {
      */
     payload[STATUS_ADV_OFF_PROFILE_SLOT] = (uint8_t)(zmk_ble_active_profile_index() & 0x07);
 
+    /* Guarded for the same reason ZMK_BATTERY_REPORTING and ZMK_WPM are: on a
+     * build with CONFIG_ZMK_USB=n these symbols do not exist and this is an
+     * undefined reference at link time. It happens to build unguarded on
+     * nice_nano_v2 only because ZMK_USB defaults y there. Both flags stay
+     * clear when USB is compiled out, which the decoder already renders as
+     * "no USB" -- the honest answer for a build with no USB stack. */
+#if IS_ENABLED(CONFIG_ZMK_USB)
     usb_hid = zmk_usb_is_hid_ready();
     if (zmk_usb_is_powered()) {
         flags |= STATUS_ADV_FLAG_USB_CONN;
@@ -420,6 +462,7 @@ static void build_payload(void) {
     if (usb_hid) {
         flags |= STATUS_ADV_FLAG_USB_HID;
     }
+#endif
     if (zmk_ble_active_profile_is_connected()) {
         flags |= STATUS_ADV_FLAG_BLE_CONN;
     }
@@ -687,14 +730,54 @@ static void tick_work_handler(struct k_work *work) {
     /* Mode 2. The active profile is connected, so ZMK's update_advertising()
      * computes desired_adv = ZMK_ADV_NONE and it stopped its advertiser on
      * connect. The set is genuinely free. Take it for one burst. */
+    /*
+     * CLAIM OWNERSHIP BEFORE STARTING, NOT AFTER. This ordering is the whole
+     * fix for a real, verified bug; do not "tidy" it back.
+     *
+     * bt_le_adv_start() is not atomic and it is not fast. It issues three
+     * synchronous HCI commands (SET_ADV_PARAM, SET_ADV_DATA, SET_ADV_ENABLE)
+     * and sleeps on each command-complete -- order 1-3 ms, during which the BT
+     * RX thread runs. If the host drops the link inside that window and
+     * `we_own_adv` is still false, status_adv_disconnected() sees no ownership
+     * and does NOT submit release_work. ZMK's disconnected() then submits
+     * update_advertising_work (verified: app/src/ble.c:530 defers via
+     * k_work_submit, it is not synchronous), which queues BEHIND the tick
+     * handler we are currently inside. It runs, hits CHECKED_OPEN_ADV, gets
+     * -EALREADY from our beacon, and returns WITHOUT setting
+     * advertising_status -- so ZMK believes it is ZMK_ADV_NONE while desiring
+     * ZMK_ADV_CONN. Nothing in ble.c polls or retries. The keyboard is then
+     * invisible to its host until a profile keypress or a reboot.
+     *
+     * That failure is worse than the known prof_select papercut, because the
+     * user's instinctive response to "my keyboard didn't reconnect" -- type,
+     * move the mouse, re-open the lid -- calls update_advertising() on none of
+     * those paths.
+     *
+     * Setting the flag first closes it: a disconnect landing anywhere inside
+     * bt_le_adv_start() now sees ownership and submits release_work from the
+     * BT RX thread, ahead of ZMK's own submission from the same callback
+     * chain, so the FIFO ordering that mechanism (2) depends on is restored.
+     *
+     * The cost is a transient false-true if the start fails, which we undo
+     * immediately below. release_adv() is a no-op against a set we never
+     * started (bt_le_adv_stop() on a stopped set returns -EALREADY, which it
+     * logs and swallows), so even a release racing in during the failed window
+     * is harmless.
+     */
+    we_own_adv = true;
+
     int err = bt_le_adv_start(STATUS_ADV_PARAM, beacon_ad, ARRAY_SIZE(beacon_ad), NULL, 0);
 
     if (err == 0) {
-        we_own_adv = true;
         phase = PHASE_BURST_END;
         k_work_reschedule(&tick_work, K_MSEC(CONFIG_CHARYBDIS_STATUS_ADV_BURST_MS));
         return;
     }
+
+    /* The start failed, so we do not own the set after all. Give the claim
+     * back before doing anything else -- in particular before piggyback(),
+     * which must never run while we believe we hold somebody else's set. */
+    we_own_adv = false;
 
     if (err == -EALREADY) {
         /* Somebody -- realistically ZMK, racing us between the predicate above
@@ -744,7 +827,27 @@ static int status_adv_event_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+/*
+ * GATE ON THE SYMBOL THAT ACTUALLY RAISES THE EVENT, and keep this expression
+ * character-identical to the one on the ZMK_SUBSCRIPTION below.
+ *
+ * zmk_peripheral_battery_state_changed is emitted from
+ * app/src/split/bluetooth/central.c under
+ * `#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)` --
+ * both the periodic GATT read and, at central.c:979-984, the
+ * state_of_charge = 0 raised on split disconnect that split_ok() depends on.
+ * It is NOT gated on ZMK_BATTERY_REPORTING && ZMK_SPLIT_ROLE_CENTRAL, which is
+ * what this used to test.
+ *
+ * WHY THE OLD GUARD WAS DANGEROUS RATHER THAN MERELY WRONG: those two symbol
+ * sets can diverge (battery reporting on, peripheral fetching off). In that
+ * configuration we subscribed to an event nothing ever raises, so
+ * `split_connected` stayed false forever, so after CHARYBDIS_STATUS_ADV_
+ * SPLIT_GRACE_MS the split hold-off -- the T_IFS cold-boot protection this
+ * module's whole safety story rests on -- was permanently disabled, with no
+ * symptom and no log line. Failing closed here is not optional.
+ */
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
     const struct zmk_peripheral_battery_state_changed *pb =
         as_zmk_peripheral_battery_state_changed(eh);
     if (pb != NULL) {
@@ -775,7 +878,9 @@ static int status_adv_event_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(charybdis_status_adv, status_adv_event_listener);
 ZMK_SUBSCRIPTION(charybdis_status_adv, zmk_activity_state_changed);
 ZMK_SUBSCRIPTION(charybdis_status_adv, zmk_ble_active_profile_changed);
-#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+/* Must stay character-identical to the guard on the `pb` handler above -- see
+ * the long note there. Divergence silently disables the split hold-off. */
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
 ZMK_SUBSCRIPTION(charybdis_status_adv, zmk_peripheral_battery_state_changed);
 #endif
 
