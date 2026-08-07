@@ -236,6 +236,126 @@ overlay must be named `boards/xiao_ble_nrf52840_zmk.overlay`.
 
 ---
 
+## D6 resolution — display sleep and the power budget
+
+### Three findings that reshape the problem
+
+**F-A. `display_blanking_on()` is a NO-OP on the nice!view.** `ls0xx_blanking_on/off`
+compile only under `#if DT_INST_NODE_HAS_PROP(0, disp_en_gpios)`; otherwise they
+`LOG_WRN("Unsupported"); return -ENOTSUP;`. ZMK's `nice_view.overlay` declares no
+`disp-en-gpios` and no `extcomin-gpios` — the panel exposes only CS/MOSI/SCK/VCC/GND.
+
+So `CONFIG_ZMK_DISPLAY_BLANK_ON_IDLE=y` would **not** darken this panel. It only
+stops the tick timer, freezing the last frame on a display that holds it
+indefinitely — **permanently-displayed stale data**, the worst possible outcome for
+a status readout. Keeping it `n` is correct for a second reason beyond the default.
+
+> **"Dark" must be implemented by drawing a blank frame, not by the blanking API.**
+
+**F-B. There is no public API to feed ZMK's activity subsystem.** `note_activity()`
+is `static`; `zmk/activity.h` exposes only `zmk_activity_get_state()`. Calling the
+non-static `set_state()` does not touch `activity_last_uptime`, so the 1 Hz handler
+re-latches IDLE within a second. **Own the state machine in the scanner module** —
+we need four states where ZMK has three, ZMK's only consumer does the wrong thing
+here (F-A), and our states must also drive scan parameters, which ZMK knows nothing
+about.
+
+**F-C. Wake latency is set by the *broadcaster's* advertising interval, not the
+scanner.** At a 1 Hz beacon you get one chance per second, so sub-second wake
+demands ~100% scan duty — the entire power budget.
+
+### Power budget — the assumption was right, and understated
+
+| Rank | Consumer | Avg current | Share |
+|---|---|---|---|
+| 1 | **BLE scan RX @ 100% duty** | **~4800 µA** | **~97%** |
+| 2 | LVGL 10 ms tick | ~20-80 µA | ~1% |
+| 3 | ls0xx VCOM thread @ 33 ms | ~30-50 µA | ~1% |
+| 4 | Frame writes @ 1 Hz | ~30 µA | <1% |
+| 5 | Panel static | ~5-20 µA | <1% |
+
+A 100%-duty scan is not "an order of magnitude" above the rest — it is **~40x the
+sum of everything else combined**.
+
+> **Blanking the panel without relaxing scan duty is not a power feature.** It saves
+> 1-2% — on a 500 mAh cell, 4.3 days becomes 4.4 days. Do it for honest UX (never
+> show stale state), not for battery.
+>
+> **Relaxing scan duty is worth 10-20x alone.** 100% ≈ 4.3 days; 20% ≈ 19 days;
+> 5% ≈ 59 days. Cut the scan first — only then does blanking earn its keep.
+
+### The highest-leverage knob is on the keyboard, and it is free
+
+For a fixed ~1 s wake: a 1000 ms beacon forces 100% duty (4.8 mA); a **200 ms**
+beacon allows 20% duty (0.96 mA); a 100 ms beacon allows 10% (0.48 mA).
+
+**A 5x cut in the keyboard's active advertising interval buys a 5x cut in scanner
+radio current at identical wake latency.** Cost on the central: roughly +40 µA.
+
+`CONFIG_ZMK_STATUS_ADV_ACTIVE_INTERVAL_MS` is an **existing upstream Kconfig** —
+configuration, not a fork.
+
+**Refines F1:** owning the broadcaster is worth *one bit* (a dedicated ACTIVE flag
+in `status_flags` 0x40) and one line of code. *Configuring* the broadcaster — which
+Option B already permits — is worth 5-10x the scanner's battery. These are
+separable, and the second is the one that matters. The power argument therefore
+favours C only weakly. Decide F1 on reliability and D7 extractability.
+
+### Activity signals — what works without owning the broadcaster
+
+| Signal | Needs broadcaster? | Reliability |
+|---|---|---|
+| **S1** advertising cadence | No | Degrades exactly where needed — at 20% duty a 5 s gap is ambiguous. Use as a **k-of-window** test, never a single-gap test. |
+| **S2** payload delta | No | Perfect positive signal, but **sparse** — typing monotone prose with WPM off yields a byte-identical payload indefinitely. |
+| **S3** `wpm_value != 0` | No, if keyboard has `ZMK_WPM=y` | Lags by seconds. UNCONFIRMED whether upstream selects it. |
+| **S4** dedicated ACTIVE bit (`status_flags` 0x40) | **Yes** | **Perfect** — one packet, unambiguous, works at any scan duty. |
+
+Make S4 **backwards-compatible** (bit clear on old firmware → fall back to S1+S2)
+so the scanner firmware is identical either side of the F1 decision.
+
+**Constraint to state plainly: S1 alone cannot give a sub-5-second wake at reduced
+duty.** Evidence takes ~10 s to accumulate.
+
+### Four states, not three
+
+**AWAKE** (panel live, scan 30/30 = 100%) → **DARK** (blank frame drawn, tick
+stopped, state retained in RAM so wake redraw is instant; scan 30/150 = 20%) →
+**NO SIGNAL** (minimal marker; slow baseline **plus a periodic 100%-duty census
+burst**). USB present pins AWAKE.
+
+**Non-obvious: reducing DARK scan duty forces the NO-SIGNAL timeout way up.** At
+20% duty you must wait 10-15 min before declaring the keyboard gone. And a pure
+slow scan can *never* re-detect a 30 s idle beacon (p95 ≈ 2.8 hours) — hence the
+census burst (~35 s at full duty every 5-15 min).
+
+**`T_dark` must be >= the keyboard's `ACTIVITY_TIMEOUT_MS` + margin** (default 90 s).
+Shorter and you go dark while the keyboard still advertises actively — burning
+fast-scan power on an invisible screen, then flickering bright on the next keypress.
+
+**Never enable `CONFIG_ZMK_SLEEP`** — this device has no keys and no
+`zmk,soft-off-wakeup-sources`, so `sys_poweroff()` is a one-way trip recoverable
+only by the reset button.
+
+### Rendering "dark" — order is inverted from ZMK's
+
+ZMK's `blank_display_cb` stops the tick *then* blanks. Because blanking is a no-op
+here, we must: (1) load the blank screen, (2) **let one LVGL frame actually flush**
+(~12 ms full-panel write), (3) *then* stop the timer. Never touch the VCOM thread.
+Fill **black** — white reads as a dead panel.
+
+### Burn-in — premise corrected
+**Not a risk.** A Sharp Memory LCD is reflective TN with a 1-bit SRAM cell per
+pixel; it has no organic emitter to age differentially. The real hazard is DC bias
+from failed VCOM inversion — and that is handled **unconditionally** by the
+driver's `while(1)` VCOM thread, which nothing in ZMK can stop. Safe to leave
+blanked for hours. The justification for going dark is **power and honest UX, not
+panel longevity**.
+
+Corollary: that 30 Hz VCOM thread is a hard floor on idle current — this device
+cannot reach deep low-power without cutting panel VDD in hardware.
+
+---
+
 ## D8 resolution — binding by `keyboard_id` allowlist
 
 **Primary: a compile-time `keyboard_id` allowlist (N=2..3 entries) enforced as a
