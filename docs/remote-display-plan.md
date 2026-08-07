@@ -879,6 +879,36 @@ optimise only once it is on screen.
 
 ---
 
+## CONFIRMED ON HARDWARE — LVGL colour constants are inverted on this panel
+
+First flash, 2026-08-07. **`lv_color_white()` renders BLACK on the nice!view;
+`lv_color_black()` renders WHITE.** Anywhere this document says "fill black",
+the code must use `lv_color_white()`.
+
+Chain, verified in the pinned trees:
+1. LVGL at `LV_COLOR_FORMAT_I1` maps white → bit 1, black → bit 0.
+2. `ls0xx` reports `PIXEL_FORMAT_MONO01`; Zephyr's `lvgl_display_mono.c`
+   `set_px_at_pos()` **clears** the destination bit for a *set* source pixel in
+   the MONO01 case (`*buf &= ~BIT(bit)`), from a `0xFF`-filled buffer.
+3. On a Sharp memory LCD a 0 bit is a **black** pixel.
+
+ZMK encodes the same inversion, which confirms it is expected rather than a
+local misconfiguration: `nice_view/widgets/util.h` defines `LVGL_FOREGROUND` as
+`lv_color_black()` in the non-inverted case, and `util.c` passes it to a
+descriptor named **`rect_white_dsc`** — named for what appears on the glass, not
+for the constant. The stock nice!view look is therefore light content on a dark
+field, which is what this display produces.
+
+**This bit us once already.** `COL_DARK` was `lv_color_black()`, which would have
+lit the panel *fully white* — maximum brightness — for the one state whose
+purpose is to extinguish it, exactly inverting the "white reads as a dead panel"
+rationale below. Fixed in `147f107`; DARK confirmed fully black on hardware.
+
+Because DARK's panel-black equals the normal background, **DARK is the ordinary
+field with every label hidden**, not a separately-coloured frame.
+
+---
+
 ## Render-slice review round — verified outcomes
 
 Three findings from the adversarial seat rested on inferences about files that were
