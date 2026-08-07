@@ -47,8 +47,18 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * exactly the machine it is meant to inform. Three seconds is comfortably past
  * enumeration on every host tried and still inside the first glance at the
  * console.
+ *
+ * Three seconds turned out NOT to be enough on its own, though — not because of
+ * enumeration, but because re-triggering the burst requires a reset that
+ * re-enumerates the port the host is reading. See the note at the bottom of
+ * selftest_cb(); the fix is that it repeats.
  */
 #define SELFTEST_DELAY_MS 3000
+
+/* Re-run interval. Long enough not to drown the console (the observer and the
+ * link machine log here too), short enough that attaching a terminal at random
+ * never waits long for a full result set. */
+#define SELFTEST_REPEAT_MS 20000
 
 /* A canonical, entirely valid v1.0 payload. Every case below is this buffer
  * with one field vandalised, so a failure names the field that broke it. */
@@ -147,6 +157,11 @@ static void run_case(const char *name, const uint8_t *buf, size_t len,
             (int)s.usb_hid_ready, (int)s.ble_connected, (int)s.ble_bonded);
 }
 
+/* Declared before the callback because the callback reschedules itself -- see
+ * the note at the end of selftest_cb(). */
+static void selftest_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(selftest_work, selftest_cb);
+
 static void selftest_cb(struct k_work *work) {
     uint8_t buf[DISPSCAN_WIRE_LEN + 4];
 
@@ -241,9 +256,27 @@ static void selftest_cb(struct k_work *work) {
     run_case("30-byte payload", buf, DISPSCAN_WIRE_LEN + 4, DISPSCAN_DECODE_OK);
 
     LOG_INF("dispscan decoder self-test complete");
-}
 
-static K_WORK_DELAYABLE_DEFINE(selftest_work, selftest_cb);
+    /*
+     * REPEAT, don't fire once.
+     *
+     * Learned the hard way on 2026-08-07: a one-shot burst N seconds after boot
+     * is unobservable in practice on this device. Reading it means attaching a
+     * host terminal to the USB CDC port -- but the only way to re-trigger the
+     * burst is a reset, and a reset RE-ENUMERATES the very port being read. The
+     * host's file descriptor does not survive that, so the window containing the
+     * results is lost. The first attempt captured the boot banner, then a log
+     * line truncated mid-string, then nothing until the 60 s battery poll.
+     *
+     * Repeating decouples "when the test runs" from "when someone is watching",
+     * which is the only property that makes it usable. The cost is ~15 log lines
+     * per interval on a build that is dev-only by construction (the symbol's
+     * help text says to turn it off once a real broadcaster can do this job over
+     * the air), and the decoder is a pure function, so re-running it is free and
+     * side-effect-free.
+     */
+    k_work_schedule(&selftest_work, K_MSEC(SELFTEST_REPEAT_MS));
+}
 
 static int dispscan_decode_test_init(void) {
     k_work_schedule(&selftest_work, K_MSEC(SELFTEST_DELAY_MS));
