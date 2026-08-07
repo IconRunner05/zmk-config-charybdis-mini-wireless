@@ -256,7 +256,36 @@ ST7735S. This combination would be the first.
 
 ---
 
-## D5 — Orientation architecture (ruling on F2)
+## D5 — Orientation: **LANDSCAPE ONLY** (ruling on F2)
+
+**Owner decision, 2026-08-07: portrait is out of scope.** The display renders
+native 160x68 and never rotates.
+
+**What this removes from the build**, all of it:
+- the custom rotating flush callback — the highest-risk item in Phase 4, with
+  four independent ways to produce a subtly wrong screen (byte bit-order,
+  `MONO01` polarity, the 8-byte I1 palette header, stride alignment)
+- the orientation Kconfig `choice` and the `dispscan_layout` vtable
+- the two-artifact `build.yaml` matrix — one firmware image, not two
+- `layout_portrait.c` and the 68x160 composition entirely
+
+**What this buys.** Landscape needs **zero rotation at any level** — stock Zephyr
+glue, stock flush callback, stock rounder, ~2.7 KB of buffers. It is also the
+better-reading layout: the layer name gets **112px (14 chars at unscii_8)** rather
+than portrait's 68px/8-chars-across-two-lines, so a name like `NAVIGATION` fits on
+one line with room to spare. Portrait's 16-char worst case would have consumed both
+available lines with zero margin, resting on an unconfirmed font advance width.
+
+Keep a **clean seam** at the composition layer (one module owns all
+`lv_obj_align()` calls) so a future orientation is a contained change — but do not
+build the abstraction now. Retrofitting portrait means reopening this design, and
+that is the accepted trade.
+
+The analysis below is retained because its findings still constrain the landscape
+build — in particular the partial-update contract, the font ruling, and the
+correction that SPI is not a bottleneck.
+
+### Superseded analysis (portrait)
 
 Derived blind from constraints, verified against LVGL `release/v9.3` and Zephyr
 `v4.1-branch` sources.
