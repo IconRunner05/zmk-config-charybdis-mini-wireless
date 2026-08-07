@@ -1059,6 +1059,111 @@ next slice:
 
 ---
 
+## D11 — RULED: the display carries an onboard 3.7 V LiPo as a USB fallback
+
+Owner's requirement, 2026-08-07: *"Make sure the display PCB can support having a
+small 3.7V battery connected as well. It'll be primarily used as a USB-powered
+device, but I'd like to build in a small onboard battery as well for the odd case
+where it can't stay powered."*
+
+**This does not disturb D9.** D9 rules that the *keyboard's* battery is the thing
+being optimised and the display is USB-powered, so the display may spend radio
+freely. That still holds: the cell is a fallback for when USB is absent, not the
+normal power source. Nothing about the scanner's scan duty needs to change for
+the tethered case, and nothing about the broadcaster changes at all.
+
+### Hardware — no PCB change required
+
+The Seeed XIAO nRF52840 has an onboard BQ25101 charge controller and **BAT+ /
+BAT- pads on the underside**. A cell soldered there is charged whenever USB is
+present and powers the board when it is not. The changeover is automatic and
+entirely in hardware; no firmware is involved and nothing in `dispscan.conf` or
+the overlay touches it.
+
+Three constraints on the cell, all owner-facing:
+
+1. **Polarity must be metered, not assumed.** Cell-vendor JST polarity is not
+   standardised. Reversed connection destroys the board.
+2. **The cell must have its own protection PCM.** This is load-bearing rather
+   than nice-to-have, and specifically *because* of a decision recorded above:
+   `CONFIG_ZMK_IDLE_TIMEOUT=2147483647` means this device never idles and never
+   sleeps, so on battery it will draw until the cell is flat. The BQ25101 does
+   charge protection only — it has no discharge cutoff. The cell's own PCM is
+   the sole thing standing between "USB unplugged overnight" and an
+   over-discharged cell.
+3. **≥100 mAh.** Charge current defaults to 50 mA (a solder jumper on the
+   underside raises it to 100 mA). On a 40 mAh cell 50 mA is >1C; at 100–200 mAh
+   it is 0.25–0.5C.
+
+### No pin conflict — verified
+
+ZMK's board extension already declares the divider:
+`zmk/app/boards/seeed/xiao_ble/xiao_ble_zmk.dts:15-24` sets
+`chosen { zmk,battery = &vbatt; }` with `io-channels = <&adc 7>` (**AIN7 =
+P0.31**), `power-gpios = <&gpio0 14 (GPIO_OPEN_DRAIN | GPIO_ACTIVE_LOW)>`, and a
+510 k / 1 M divider. Confirmed live: the boot log prints `bvd_init: AIN7`.
+
+The display uses **D7/D8/D9/D10 = P1.12/P1.13/P1.14/P1.15**. Battery sense is
+P0.31 and P0.14, neither of which is on the XIAO D header. **No collision.** This
+is the same conclusion the CS note in
+`boards/xiao_ble_nrf52840_zmk.overlay` already reaches from the other direction
+("the only thing near [D2/D3] is the ADC, and the vbatt divider uses AIN7").
+
+### The power reality — state it before anyone is surprised by it
+
+Two things in the shipping-today image are tethered-only:
+
+* `CONFIG_ZMK_USB_LOGGING=y` holds USB enumerated. Already flagged in
+  `dispscan.conf` as bring-up-only; it must be `n` for any battery measurement.
+* The observer scans at **100 % duty** (`dispscan_observer.c:51-57`,
+  `interval = window = BT_GAP_SCAN_FAST_*` = 30 ms). That is ~5–6 mA continuous,
+  ~7 mA with the panel. **A 150 mAh cell is therefore ~20 h.**
+
+### The trap: you cannot micro-duty-cycle this receiver
+
+The obvious saving — shorten the scan window — does not work here, and the reason
+is a property of the *broadcaster*, so it must be recorded on this branch even
+though it lives on the other one.
+
+The broadcaster emits a **50 ms burst** once per `CHARYBDIS_STATUS_ADV_ACTIVE_MS`
+(1000 ms active) or `..._IDLE_MS` (30000 ms idle). A scan at 30 ms window /
+300 ms interval is 10 % duty and catches roughly 10 % of bursts — so in the idle
+regime the expected time to hear anything goes from 30 s to minutes, which
+`DISPSCAN_LOST_MS` would render as **NO SIGNAL**. That is the exact failure D8
+forbids: *a user must never mistake "display slept" for "keyboard died."*
+
+**The correct shape is a MACRO duty cycle**: scan continuously for ~1.5 s, then
+sleep the radio ~15 s. Same 10 % duty, but a 1.5 s continuous window is longer
+than the 1 s active burst period, so it is *guaranteed* to catch a burst while
+the keyboard is in use. Cost is up to ~15 s of staleness on battery, which the
+existing freshness/link machinery in `dispscan_link.c` already models and
+renders honestly.
+
+nRF52840 exposes USB-present, so the profile can switch automatically on unplug
+rather than being a build-time choice.
+
+### Ruling
+
+**Wire the cell now** — the hardware supports it as-is and nothing in the current
+firmware is hostile to it. The battery-mode work (logging off, USB-present
+detection, macro duty-cycle scan profile, own-battery indicator on the panel) is
+a **separate slice, deferred**, and is not a prerequisite for anything currently
+in flight. Until it lands, battery runtime is ~20 h and that is expected
+behaviour, not a defect.
+
+Deferred to that slice, do not lose:
+
+* Own-battery reading is available via `zmk,battery` but is **not currently
+  rendered anywhere** on the panel. Decide whether it earns a band or a corner
+  glyph.
+* Low-battery behaviour is currently nothing. Consider extinguishing the panel
+  below a threshold rather than relying on the cell's PCM to cut out mid-frame.
+* `CONFIG_ZMK_IDLE_TIMEOUT=2147483647` is the reason the PCM is load-bearing.
+  If real sleep ever arrives, revisit that dependency rather than leaving this
+  note stale.
+
+---
+
 ## Phase 4 working ledger
 
 | Lane | Purpose | Status |
