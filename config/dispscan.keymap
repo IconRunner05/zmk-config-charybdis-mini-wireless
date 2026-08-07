@@ -1,0 +1,47 @@
+/*
+ * dispscan — mandatory one-key keymap.
+ *
+ * SPDX-License-Identifier: MIT
+ *
+ * The scanner has NO KEYS, but ZMK main will not build without a keymap:
+ * app/src/keymap.c contains
+ *   #if !DT_NODE_EXISTS(DT_DRV_INST(0))
+ *   #error "Keymap node not found, ..."
+ * so a `zmk,keymap` node is unconditionally required.
+ *
+ * One layer with one `&none` binding is the minimum that is also CONSISTENT
+ * with the mock kscan in the shield overlay: that kscan is 1 row x 1 column, so
+ * app/include/zmk/matrix.h computes ZMK_KEYMAP_LEN = 1 and this single binding
+ * fills the keymap exactly. `&none` swallows the one synthetic key event the
+ * mock driver emits at boot.
+ *
+ * WHY THIS FILE LIVES IN config/ AND NOT IN THE SHIELD DIRECTORY
+ * -------------------------------------------------------------
+ * ZMK's app/boards/post_boards_shields.cmake searches KEYMAP_DIRS with the
+ * ZMK_CONFIG directory PREPENDED, so config/ is searched before the shield
+ * directory. Putting the keymap here therefore wins the search outright, and it
+ * matches this repo's existing convention (config/charybdis.keymap also lives at
+ * the config root rather than in the shield directory).
+ *
+ * HISTORICAL NOTE, KEPT SO NOBODY REINTRODUCES THE BUG: that same search also
+ * tries progressively shorter underscore-trimmed prefixes of the shield name.
+ * Back when this shield was called `charybdis_scanner`, the prefix `charybdis`
+ * matched config/charybdis.keymap -- the real 56-key keyboard keymap -- and a
+ * keymap placed in the shield directory would have been silently shadowed by
+ * it, failing the build on bindings that reference keyboard-only devicetree
+ * nodes. The shield is now `dispscan`, which has no underscore and therefore
+ * generates no prefixes at all, so the hazard is gone. Do not rename it back.
+ */
+
+#include <behaviors.dtsi>
+
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            display-name = "Scan";
+            bindings = <&none>;
+        };
+    };
+};

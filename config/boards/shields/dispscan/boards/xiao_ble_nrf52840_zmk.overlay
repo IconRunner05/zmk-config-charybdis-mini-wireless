@@ -1,0 +1,100 @@
+/*
+ * dispscan — Seeed XIAO nRF52840 (ZMK board variant) wiring.
+ *
+ * SPDX-License-Identifier: MIT
+ *
+ * File name is load-bearing: Zephyr's shields.cmake picks up
+ * <shield_dir>/boards/<board>_<soc>_<variant>.overlay, i.e.
+ * xiao_ble_nrf52840_zmk.overlay for board `xiao_ble/nrf52840/zmk`. Same shape
+ * as ZMK's own app/boards/shields/nice_view_adapter/boards/
+ * nice_nano_nrf52840_zmk.overlay.
+ *
+ * Its whole job is to define the `nice_view_spi` label. The in-tree `nice_view`
+ * shield's overlay is nothing but `&nice_view_spi { ls0xx@0 { ... }; };` plus a
+ * chosen zephyr,display -- it supplies the panel, we supply the bus. That is
+ * also why build.yaml lists `dispscan nice_view` in that ORDER: the label must
+ * exist before nice_view's overlay is applied.
+ *
+ * BUS CHOICE -- &xiao_spi (= spi2). Not negotiable, the alternatives are both
+ * broken on this board:
+ *   * spi3 default pins are P0.21 / P0.20 / P0.24, which collide EXACTLY with
+ *     QSPI SCK / IO0 / IO1 -- and ZMK's xiao_ble_zmk.dts enables &qspi for the
+ *     onboard P25Q16H flash.
+ *   * spi1 shares peripheral instance 1 with i2c1, which the XIAO board dts
+ *     enables by default ("Cannot be used together with spi1").
+ * spi2 is already `status = "okay"` upstream and its stock pinctrl
+ * (spi2_default / spi2_sleep, inherited untouched here) is
+ * SCK P1.13 (D8), MOSI P1.15 (D10), MISO P1.14 (D9) -- none of them QSPI pins.
+ *
+ * MISO is kept in the psels even though a Sharp memory LCD is write-only: it
+ * is unconfirmed whether the nRF SPIM driver tolerates a missing MISO psel,
+ * every in-tree example keeps it, and D9 is otherwise unused. Not worth the
+ * risk to save one pin.
+ */
+
+nice_view_spi: &xiao_spi {
+    /*
+     * Upstream declares spi2 as "nordic,nrf-spi" (the legacy, non-EasyDMA
+     * driver). Upgrade to SPIM: DMA-driven, so the 1499-byte full-frame write
+     * does not sit in a CPU busy loop.
+     */
+    compatible = "nordic,nrf-spim";
+    status = "okay";
+
+    /*
+     * CHIP SELECT IS ACTIVE HIGH. Zephyr's drivers/display/ls0xx.c sets
+     * SPI_CS_ACTIVE_HIGH in its operation word, and drivers/spi.h requires the
+     * GPIO flag to agree -- GPIO_ACTIVE_LOW here would fail the config check,
+     * not merely idle the wrong way round.
+     *
+     * WHY D7, AND WHY THE UART SCARE IS A FALSE ALARM
+     * -----------------------------------------------
+     * D7 = P1.12 via the XIAO nexus
+     * (zephyr/boards/seeed/xiao_ble/seeed_xiao_connector.dtsi:22,
+     * `<7 0 &gpio1 12 0>`). P1.12 is ALSO the UART0 RX pin: that same board
+     * directory's xiao_ble-pinctrl.dtsi:12 has `psels = <NRF_PSEL(UART_RX, 1,
+     * 12)>` for uart0_default (TX is P1.11 = D6), and xiao_ble_common.dtsi:81-86
+     * sets `&uart0 { status = "okay"; ... }`. On a stock Zephyr xiao_ble that
+     * would be a hard conflict -- the UARTE driver would claim P1.12 at init and
+     * fight the SPI chip select.
+     *
+     * It is not a conflict on THIS board target, because we build the ZMK board
+     * *extension* `xiao_ble/nrf52840/zmk`, and ZMK's
+     * app/boards/seeed/xiao_ble/xiao_ble_zmk.dts:27 contains exactly:
+     *
+     *     &xiao_serial { status = "disabled"; };
+     *
+     * `xiao_serial` is the label for &uart0 -- seeed_xiao_connector.dtsi:32 is
+     * literally `xiao_serial: &uart0 {};`. So uart0 is disabled, its driver is
+     * never instantiated, uart0_default pinctrl is never applied, and P1.12 is
+     * a plain GPIO that nothing else claims. Verified against ZMK `main` and
+     * zmkfirmware/zephyr @ v4.1.0+zmk-fixes.
+     *
+     * CONSEQUENCE, AND THE ONE WAY TO BREAK THIS: if this build is ever moved
+     * to the plain `xiao_ble` board target (which loses the ZMK extension --
+     * and with it ZMK_USB/ZMK_BLE, UF2 output, NVS settings and the battery
+     * divider, so it should never happen), or if a snippet/overlay re-enables
+     * &uart0 for a serial console, P1.12 is contested again and the display
+     * will misbehave in ways that look like a flaky panel. Move CS to D2
+     * (P0.28) or D3 (P0.29) if that ever happens -- both are ordinary GPIO on
+     * this board, with no pinctrl psel and no peripheral claim; the only thing
+     * near them is the ADC, and the ZMK extension's vbatt divider uses
+     * `io-channels = <&adc 7>` (AIN7 = P0.31), not AIN4/AIN5.
+     *
+     * Given all that, D7 is kept because it is the pin physically adjacent to
+     * the D8/D9/D10 SPI trio on the XIAO header, so the display connector is
+     * one contiguous 4-pin run (D7 CS, D8 SCK, D9 MISO, D10 MOSI).
+     *
+     * ls0xx.c also sets SPI_HOLD_ON_CS | SPI_LOCK_ON: it takes the bus and
+     * never gives it back. NEVER add a second device to this bus.
+     */
+    cs-gpios = <&xiao_d 7 GPIO_ACTIVE_HIGH>;
+
+    /*
+     * Stub so the nice_view shield's `ls0xx@0` enhances the node that falls
+     * FIRST on the bus -- cs-gpios entries are matched to children by child
+     * order, not by `reg`, so the node that owns cs-gpios index 0 must be
+     * declared here. Same trick as ZMK's zmk_uno.dtsi.
+     */
+    ls0xx@0 { reg = <0>; };
+};

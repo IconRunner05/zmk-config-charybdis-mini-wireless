@@ -1,0 +1,35 @@
+# dispscan — shield defaults.
+#
+# Only *defaults* belong here (a plain `.conf` fragment always wins over a
+# Kconfig.defconfig default). Hard requirements that must not be silently
+# overridden live in dispscan.conf instead.
+
+if SHIELD_DISPSCAN
+
+# The scanner is a separate BLE device from the keyboard. Give it its own name
+# so it can never be confused with (or shadowed by a stale bond of) the
+# keyboard, whose name is set in config/charybdis.conf. Max 16 chars.
+#
+# This is now a genuine default rather than a fallback in a tug-of-war: since
+# the shield was renamed to `dispscan`, config/charybdis.conf is no longer
+# pulled into this build by prefix matching, so nothing else assigns this
+# symbol. dispscan.conf still sets it explicitly — a .conf assignment is the
+# unambiguous single source, and this default only covers someone building the
+# shield without that fragment.
+config ZMK_KEYBOARD_NAME
+	default "CharyScan"
+
+# The whole point of the device. nice_view.conf also sets this, but the scanner
+# must not depend on being built together with a particular display shield.
+config ZMK_DISPLAY
+	default y
+
+# 1bpp Sharp memory LCD: there is no antialiasing, so Montserrat's thin strokes
+# drop out entirely. unscii_8 is a bitmap font designed for 1bpp. Selecting it
+# as ZMK's "default small" font also drops Montserrat 12 (ZMK's stock choice)
+# from the image. See docs/remote-display-plan.md, "Font ruling".
+choice ZMK_LV_FONT_DEFAULT_SMALL
+	default ZMK_LV_FONT_DEFAULT_SMALL_UNSCII_8
+endchoice
+
+endif # SHIELD_DISPSCAN
