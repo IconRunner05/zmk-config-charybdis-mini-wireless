@@ -236,6 +236,113 @@ overlay must be named `boards/xiao_ble_nrf52840_zmk.overlay`.
 
 ---
 
+## D8 resolution — binding by `keyboard_id` allowlist
+
+**Primary: a compile-time `keyboard_id` allowlist (N=2..3 entries) enforced as a
+hard reject in the scan callback. Fallback: the unbound state of that same
+mechanism** — an empty allowlist puts the display in *discovery mode*, rendering
+the `keyboard_id` of the strongest keyboard it hears. Setup and graceful
+degradation are one mechanism, not two.
+
+Setup UX: flash default firmware → read 8 hex digits off the screen → paste into
+the shield `.conf` → rebuild. No USB, no host tooling, no shell. The landscape
+layout has 112px = 14 chars at unscii_8, so 8 hex digits fit with a label.
+
+**Why this and not the alternatives:** a non-allowlisted ID never reaches display
+state, so the only possible wrong output is `NO SIGNAL` — loud and correct.
+Every other scheme can fail *silently* by rendering a stranger's data.
+
+### Do not use upstream's channel matching — it is broken
+
+`src/status_scanner.c:153`:
+```c
+bool channel_match = (scanner_channel == 0 || scanner_channel >= 10 ||
+                      keyboard_channel == 0 || scanner_channel == keyboard_channel);
+```
+Two independent defects:
+1. **`keyboard_channel == 0` is a wildcard held by the *keyboard*.** A colleague
+   running defaults (channel 0) is accepted by **every** scanner regardless of how
+   yours is set. Setting a channel buys nothing against the exact scenario
+   channels exist to solve.
+2. **`scanner_channel >= 10` is silently promiscuous.** Pick "42" thinking it is a
+   private channel and you get a wide-open scanner.
+
+We own the scanner, so: **strict equality only**, no wildcards, no escape hatch.
+Keep channel as an optional coarse pre-filter; never as the identity.
+
+### Why `keyboard_id` is the right key
+Derived from FICR `DEVICEID` via `hwinfo_get_device_id()`, so it survives reflash,
+rename, bootloader update, `settings_reset`, profile clear, and BLE address
+rotation. The name-hash fallback is **dead code on nRF52840** — the driver
+unconditionally returns 8 bytes — so "a rename breaks the binding" does not apply
+to this hardware. Only swapping the physical MCU changes it, which fails loudly.
+
+Collision probability across 5 devices: ~2.3 x 10^-9. Non-issue.
+
+### Three liveness states — distinct from D6's DARK
+- **LIVE** — last matching packet < 5 s
+- **IDLE** — 5-90 s. Keep rendering last-known values with a staleness marker.
+  This window must span the ~30 s idle cadence or a keyboard merely sitting there
+  reads as gone.
+- **NO SIGNAL** — > 90 s (3x idle interval, so one dropped advert cannot trigger it)
+
+**Never zero out last-known values** — a battery reading of 0% is worse than a
+stale one. And **DARK (D6 inactivity) must look different from NO SIGNAL** — a
+user must never mistake "display slept" for "keyboard died".
+
+### Two keyboards, one display
+Allowlist holds N entries. Active = most recently heard, with hysteresis: switch
+only when the challenger has been more recent for >=3 consecutive packets **and**
+the incumbent has been silent >=10 s. Prefer **advertising cadence** as the
+tiebreak over RSSI — the board you are typing on is the one advertising at the
+active rate, which is a semantic signal rather than a physical proxy. With N>1,
+render *which* keyboard is shown or the user cannot tell.
+
+### One keyboard, two displays — free, and passive scanning makes it strictly free
+BLE broadcast is connectionless; N observers impose no state on the transmitter.
+Under **passive** scanning there is literally zero keyboard-side cost. Note
+upstream uses **active** scanning, under which each scanner costs the keyboard a
+SCAN_RSP transmission per advertisement — an additional, previously unstated
+argument for the passive ruling.
+
+### Byte-order trap — must be handled explicitly
+The broadcaster does `memcpy(keyboard_id, &id_hash, 4)` on a little-endian MCU, so
+wire bytes are LSB-first, while the keyboard's own debug log prints `id_hash` as
+`%08X` (MSB-first text). **Define the canonical form as the uint32 as printed**,
+have the discovery screen print that same uint32, and reconstruct with
+`sys_get_le32()` before comparing. Get this inconsistent and the user pastes a
+byte-swapped ID, sees `NO SIGNAL`, and has nothing to debug against.
+
+### Privacy — accept it, add nothing
+**Leaked:** layer index + 4-char name, both battery levels, profile slot,
+USB/BLE/bonded/caps flags, modifier state (class only), WPM, and a stable 4-byte
+device ID. **Not leaked: keystrokes, key codes, text, or key positions.** WPM is an
+aggregate rate. Worth stating plainly — "my keyboard is broadcasting" invites a
+worse assumption than the reality.
+
+The real exposure is **presence and tracking, not content**: an observer learns
+whether you are at your desk and typing. And `keyboard_id` is a permanent,
+non-rotating identifier that partially defeats BLE address privacy — which is
+precisely the property that makes it a good binding key.
+
+Mitigation rejected as disproportionate. A "shared secret" in the two spare
+`status_flags` bits gives **four possible values** — theatre, and it burns bits
+D6 wants for the activity flag. The tracking concern is real but marginal: the
+keyboard already emits a fixed connectable advert with a fixed device name for
+host pairing, an equally good tracker. Encrypting the payload while the name
+beacon stays in the clear achieves nothing. If the office case ever matters, the
+correct control is slowing the idle cadence or gating broadcast on at-desk, which
+cuts exposure *and* battery — not encryption.
+
+Spoofing is trivial and cosmetic: no control path, nothing actuates.
+
+### Impact on F1
+**None — and that is the finding.** The entire primary scheme works against an
+unmodified upstream broadcaster, because `keyboard_id` is already in the payload.
+F1 should be decided on the reliability and D7-extractability arguments alone.
+
+---
+
 ## The wire contract — 26-byte status advertisement
 
 **This is the only coupling between keyboard and scanner (D3).** Keeping it
