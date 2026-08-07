@@ -98,3 +98,30 @@ nice_view_spi: &xiao_spi {
      */
     ls0xx@0 { reg = <0>; };
 };
+
+/*
+ * NO CONSOLE NODES HERE, AND THAT IS DELIBERATE -- see CONFIG_ZMK_USB_LOGGING
+ * in dispscan.conf, which is the whole of the console change.
+ *
+ * The obvious move is to inline the devicetree half of upstream's
+ * `zmk-usb-logging` snippet (zmk/app/snippets/zmk-usb-logging/*.overlay): a
+ * `zephyr,cdc-acm-uart` child of &zephyr_udc0 plus `chosen zephyr,console`.
+ * That snippet exists for boards with no USB console of their own. THIS BOARD
+ * ALREADY HAS ONE. zephyr/boards/seeed/xiao_ble/xiao_ble.dts includes
+ * zephyr/boards/common/usb/cdc_acm_serial.dtsi, which declares
+ * `board_cdc_acm_uart` under zephyr_udc0 and already assigns it to
+ * zephyr,console / zephyr,shell-uart / zephyr,uart-mcumgr / zephyr,bt-mon-uart
+ * / zephyr,bt-c2h-uart (that file, lines 9-18). Verified in the generated
+ * build/zephyr/zephyr.dts for this exact board+shield combination.
+ *
+ * Adding our own node would therefore enumerate a SECOND CDC ACM interface on
+ * the same USB device -- two /dev/tty* on the host, one of them silent, plus
+ * the endpoint pair and ring buffer to feed it. Reusing the board's node costs
+ * nothing and cannot drift out of sync with the board definition.
+ *
+ * The CS note above is unaffected either way: CDC ACM is a virtual UART on the
+ * USB device stack and claims no pin. It is specifically a HARDWARE UART
+ * console (&uart0, which ZMK's xiao_ble_zmk.dts:27 disables) that would apply
+ * uart0_default pinctrl and reclaim P1.12 = D7, the ls0xx chip select. Never
+ * enable one on this board.
+ */

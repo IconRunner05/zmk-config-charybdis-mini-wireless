@@ -15,4 +15,11 @@ if(CONFIG_ZMK_DISPLAY)
   # Same line as app/boards/shields/nice_view/CMakeLists.txt.
   zephyr_library_include_directories(${CMAKE_SOURCE_DIR}/include)
   zephyr_library_sources(custom_status_screen.c)
+
+  # Development scaffold only -- see the banner in dispscan_fake_source.c. The
+  # _ifdef form is what makes CONFIG_DISPSCAN_FAKE_SOURCE=n a genuine removal
+  # rather than a runtime no-op: the translation unit is not compiled, so the
+  # timer, the work item and their stacks cost nothing in the shipping image.
+  # The renderer has no reference to this file, so dropping it still links.
+  zephyr_library_sources_ifdef(CONFIG_DISPSCAN_FAKE_SOURCE dispscan_fake_source.c)
 endif()

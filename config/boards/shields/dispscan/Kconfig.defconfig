@@ -24,12 +24,62 @@ config ZMK_KEYBOARD_NAME
 config ZMK_DISPLAY
 	default y
 
-# 1bpp Sharp memory LCD: there is no antialiasing, so Montserrat's thin strokes
-# drop out entirely. unscii_8 is a bitmap font designed for 1bpp. Selecting it
-# as ZMK's "default small" font also drops Montserrat 12 (ZMK's stock choice)
-# from the image. See docs/remote-display-plan.md, "Font ruling".
-choice ZMK_LV_FONT_DEFAULT_SMALL
-	default ZMK_LV_FONT_DEFAULT_SMALL_UNSCII_8
-endchoice
+# The font selection USED TO LIVE HERE, as a `choice ZMK_LV_FONT_DEFAULT_SMALL`
+# default. It has moved to dispscan.conf, for two reasons:
+#
+#   1. It is a hard requirement, not a preference. Every geometry constant in
+#      custom_status_screen.c is derived from unscii_8's 8 px advance, so this
+#      file's own rule at the top ("Only *defaults* belong here") puts it in the
+#      .conf.
+#   2. IT DID NOT WORK. Verified against a real build's build/zephyr/.config,
+#      which showed CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_12=y and
+#      "# CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_UNSCII_8 is not set" -- i.e. the
+#      opposite of what this block asked for. Kconfig resolves a choice using
+#      the FIRST `default` it encounters in source order, and ZMK defines the
+#      choice with `default ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_12` in
+#      app/src/display/Kconfig, which app/Kconfig sources at line 284 -- long
+#      before it sources shield Kconfig.defconfig files at line 721. A shield
+#      default can never win that race. A `.conf` assignment can, because
+#      .conf fragments are applied after the whole Kconfig tree is built.
+#
+# (The build still linked only because LVGL's own `default LV_FONT_DEFAULT_UNSCII_8
+# if LV_CONF_MINIMAL` happened to pull lv_font_unscii_8 into the image via a
+# different symbol. That is luck, not a guarantee -- see dispscan.conf.)
+
+# --- Development scaffold ----------------------------------------------------
+# Drives the status screen from a synthetic status struct so the render path can
+# be validated on hardware before any BLE code exists (docs/remote-display-plan.md,
+# "Build order" step 2). This is the ONLY thing that calls
+# dispscan_status_update() today.
+#
+# `default y` is deliberate and TEMPORARY: with no observer yet, n would leave a
+# device that boots to a permanent "NO SIGNAL" screen and proves nothing. Flip it
+# to n -- or delete the symbol and the file together -- in the slice that adds the
+# real observer. Nothing else depends on it: CMakeLists.txt guards the source
+# with zephyr_library_sources_ifdef, and the renderer holds no reference back.
+#
+# Declared here rather than in Kconfig.shield because it is shield-conditional
+# behaviour, not the shield's existence. Same shape as nice_view's own
+# NICE_VIEW_WIDGET_STATUS, which is likewise a prompted `config` inside that
+# shield's Kconfig.defconfig.
+config DISPSCAN_FAKE_SOURCE
+	bool "Drive the dispscan status screen from a fake data source"
+	default y
+	help
+	  Runs a slow Zephyr timer that synthesises decoded keyboard status and
+	  pushes it to the renderer. The 40-step cycle sweeps each widget through
+	  a representative range, visits all three display states (AWAKE / DARK /
+	  NO SIGNAL), and then spends two dedicated ticks on the layout's actual
+	  worst cases -- layer 255 with a full 4-character name, out-of-range
+	  batteries, an illegal profile slot, WPM 255, every modifier held, and a
+	  layer name containing a truncated multi-byte codepoint -- alongside the
+	  wire contract's 0 = "battery N/A" case.
+
+	  The panel carries a visible "FAKE" marker in every state while this is
+	  enabled, so a device showing synthetic data cannot be mistaken for one
+	  receiving real packets.
+
+	  Development aid only. Set to n once a real BLE observer supplies
+	  dispscan_status_update().
 
 endif # SHIELD_DISPSCAN

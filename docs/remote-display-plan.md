@@ -126,6 +126,31 @@ Constraints that shape the answer:
 - Our display is single-keyboard and landscape-only; we do not want upstream's
   3-slot multi-keyboard UI.
 
+### D10 — Sequencing: display first; keyboard soak stays pending
+Offered the owner three orders (display-first / keyboard-first / both staggered).
+**Owner chose display-first.** Phase 4 proceeds now; Phases 0–2 on the keyboard
+branches are **not** started, and the Phase 2 soak clock has **not** begun.
+
+**Consequence to keep visible:** Phase 3 (the broadcaster) is gated behind the
+Phase 2 soak, and that soak is a week of wall-clock that nobody is spending yet.
+The scanner can reach "renders live fake data" and even "decodes a real packet
+from a bench transmitter" without it, but it cannot reach "shows this keyboard"
+until the keyboard line is stabilised. R2 (the unrun BLE anchor fix `97b8436`)
+and R3 (unpinned trackball driver) both remain open and untouched.
+
+**Owner also reports the display will stay USB-tethered to the dev machine
+throughout development.** This is load-bearing, not incidental:
+- It gives a **USB CDC console** — `LOG_INF` over serial. A keyless, hostless,
+  screen-only device otherwise has no output channel but the panel itself, so
+  this is the difference between debugging the packet decoder and guessing at it.
+- It **confirms D9 empirically** rather than by assumption: the scanner is on
+  mains for the whole of Phase 4, so the scan-duty state machine stays deleted
+  and 100% scan duty is simply correct for now.
+- Reflash needs no reset-button double-tap dance.
+
+It does **not** change D6: going dark on inactivity survives as an *honest-UX*
+requirement (never show stale state), not a power one. See D9.
+
 ---
 
 ## Open forks (not yet ruled)
@@ -851,6 +876,96 @@ optimise only once it is on screen.
 5. Portrait flush cb, **validated in isolation**
 6. Portrait composition, reusing widgets unchanged
 7. `build.yaml` → two artifacts
+
+---
+
+## Render-slice review round — verified outcomes
+
+Three findings from the adversarial seat rested on inferences about files that were
+not vendored in this repo at the time. A west workspace now exists, so all three
+were checked **against the actual source**. Recording the results because two of
+them correct statements this document previously asserted as verified fact.
+
+### VCOM is driven unconditionally — but not for the reason stated above
+
+This document claimed both that the panel exposes **no `extcomin-gpios`** (true) and
+that the VCOM thread runs unconditionally (true) — without reconciling them. They
+reconcile because there are **two** VCOM mechanisms, and the nice!view uses the
+second one:
+
+```c
+/* zephyr/drivers/display/ls0xx.c:60 */
+#if DT_INST_PROP(0, serial_vcom_inversion) || DT_INST_NODE_HAS_PROP(0, extcomin_gpios)
+#define USE_VCOM_THREAD true
+#endif
+```
+
+`nice_view.overlay` declares `serial-vcom-inversion;` and `serial-vcom-interval = <33>`,
+satisfying the **first** disjunct. The `while(1)` thread therefore exists and takes
+its `#elif serial_vcom_inversion` branch, sending a 2-byte empty command every 33 ms
+purely to flip `LS0XX_BIT_VCOM`. This is independent of application writes.
+
+**Consequence:** DARK — which produces zero application SPI traffic for its whole
+duration — carries **no DC-bias risk**. "Safe to leave blanked for hours" stands.
+Do not add a periodic write "for VCOM"; the driver already does it.
+
+### The band layout is NOT what satisfies the ls0xx width constraint
+
+Previously implied. It is wrong, and the real mechanism is unconditional:
+
+- `ls0xx_get_capabilities()` reports `current_pixel_format = PIXEL_FORMAT_MONO01`
+  and `screen_info = SCREEN_INFO_X_ALIGNMENT_WIDTH`.
+- `zephyr/modules/lvgl/lvgl_display.c` registers `lvgl_rounder_cb_mono` on
+  `LV_EVENT_INVALIDATE_AREA` for the MONO01/MONO10 case.
+- `lvgl_rounder_cb_mono` sees `SCREEN_INFO_X_ALIGNMENT_WIDTH` and does
+  `area->x1 = 0; area->x2 = cap.x_resolution - 1`.
+
+So **every** invalidation is widened to the full 160 px before it reaches the flush
+callback, and `ls0xx_write`'s `desc->width != LS0XX_PANEL_WIDTH` rejection can never
+fire. The horizontal band layout bounds only the invalidation **height** — still
+worth having, but for bandwidth, not legality.
+
+### No duplicate `zmk_display_status_screen()` from `nice-view-gem`
+
+`config/west.yml` does pull `m165437/nice-view-gem`, which defines its own
+`zmk_display_status_screen()`. It lives at
+`nice-view-gem/boards/shields/nice_view_gem/custom_status_screen.c` and compiles only
+when **that shield** is in the shield list. We build `dispscan nice_view`. Confirmed
+empirically: the image links. (Four definitions exist in the workspace overall —
+ZMK's built-in, ZMK's `nice_view` shield, `corneish_zen`, and `nice_view_gem` — and
+all four are excluded by shield selection or Kconfig.)
+
+### Deferred to the BLE-observer slice — do not lose these
+
+Raised by review, not fixable in a slice with no radio. Each is a real trap for the
+next slice:
+
+1. **The seam is push-only, so `NO_SIGNAL` is unreachable exactly when it matters.**
+   The natural observer shape is *scan callback → decode → update*. Under it, a dead
+   keyboard means the observer simply stops being called, the renderer is never told,
+   and the panel holds a live-looking AWAKE screen with plausible values forever —
+   verbatim the failure this document exists to prevent. **The observer slice must
+   add a free-running timer that pushes NO_SIGNAL on silence.** Nothing in the
+   current header tells its author that.
+2. **D6's DARK and the liveness triple are orthogonal axes, and the struct has one.**
+   LIVE / IDLE / NO-SIGNAL (staleness) is not the same axis as AWAKE / DARK
+   (inactivity). Keyboard idle 60 s with beacons still arriving at the 30 s cadence is
+   *IDLE with a staleness marker* on one axis and *heading toward DARK* on the other.
+   There is currently nowhere to put a staleness marker and no spare object in bands
+   A/D/E. Resolve the model before writing the observer.
+3. **The battery L/R swap is a second hidden coupling.** Decoding trap #3 is "the
+   decoder's job", but the wire carries no field saying which side the central is —
+   it depends on the keyboard's `CONFIG_ZMK_STATUS_ADV_CENTRAL_SIDE`. The scanner
+   must hardcode a keyboard-side Kconfig value. Flipping the keyboard's central to
+   LEFT silently swaps the halves on the display with no wire signal. **D3's "the
+   only contract is the byte layout" is therefore not strictly true** — say so
+   plainly rather than discovering it later.
+4. **No RSSI in the model.** D8's discovery mode ("show the strongest keyboard") and
+   the two-keyboard hysteresis rule both need it. Add it when D8 lands.
+5. **`DISPSCAN_PROFILE_MAX 4`** hardcodes ZMK's default `ZMK_BLE_PROFILE_COUNT` into
+   the scanner. A keyboard built with more profiles renders `BT?` for valid slots.
+6. **Activity inference belongs in its own unit.** Decoding 26 bytes and inferring
+   keyboard state are two jobs; do not fuse them into the observer file.
 
 ---
 
