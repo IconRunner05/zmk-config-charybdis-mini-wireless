@@ -157,7 +157,67 @@ requirement (never show stale state), not a power one. See D9.
 
 | # | Fork | Status |
 |---|---|---|
-| F1 | Broadcaster: ready-made kit (Option B) vs own ext-adv set (Option C) | **Still open — deferred to Phase 3.** Architecturally C, per D7. But a **verified Zephyr blocker** now conditions it (see below), and the evidence base for B is not yet trustworthy (see the research-integrity note). Do not rule this until the outstanding investigations are re-run. |
+| ~~F1~~ | Broadcaster: ready-made kit (B) vs own ext-adv set (C) | **RULED — B2: our own minimal broadcaster, legacy API, one Kconfig gate.** See below. |
+
+### F1 — RULED: own minimal broadcaster on the legacy API (B2)
+
+Owner ruled **B2** after the fabricated evidence base was rebuilt from scratch.
+
+**Option C is dead, on two independent grounds.**
+
+*Ground 1 — it is not isolated.* Upstream shipped ext-adv (`b387c31`, 2026-01-15,
+to fix macOS/iOS pairing) and removed it on **2026-02-20 across four commits in
+under two hours**, ending at *"Remove BT_EXT_ADV dependency - use legacy BLE API
+only"*. Independently verified in `subsys/bluetooth/host/adv.c` at the exact
+revision ZMK v0.2.1 pins: `bt_le_adv_start()` branches on
+`IS_ENABLED(CONFIG_BT_EXT_ADV)`, and `adv_get_legacy()` switches from the static
+`bt_dev.adv` to a slot allocated from `adv_pool[]` — **created on every start and
+deleted on every stop.** So setting `BT_EXT_ADV=y` silently reroutes ZMK's *own*
+advertising, with zero edits to ZMK. Option C's premise — "fully isolated" — is
+true at the API level and false at the implementation level.
+
+*Ground 2 — it cannot satisfy D7.* The Zephyr fix cherry-picks cleanly (PR #71611,
+2 files, +40/−13, verified to apply to `zmkfirmware/zephyr` with zero conflicts —
+the two patched files are byte-identical to upstream v3.5.0). But landing it means
+forking Zephyr and repointing the west manifest. **That edit lives in a shared
+config path, outside the Kconfig gate, and cannot be reverted by flipping a
+symbol.** D7 rules it out regardless of radio behaviour.
+
+**Why B2 over B1/B3.** B1 (adopt upstream wholesale) hands the riskiest behaviour —
+the connectable proxy that owns keyboard pairability while disconnected — to code
+we cannot bisect, carrying live split-keyboard bugs upstream is still patching.
+B3 (piggyback only, `bt_le_adv_update_data()` and nothing else) has a documented
+zero-interference property and is ~50 lines, but the keyboard only advertises while
+**disconnected**, so the display freezes exactly while the keyboard is in use.
+B2 keeps the risk in code we wrote, behind one symbol, in one reviewable diff.
+
+**v0.2.1 is a better target than feared.** `event_manager.h` is **byte-identical**
+to `main`. `ZMK_LISTENER`/`ZMK_SUBSCRIPTION` register via additive linker sections
+(`KEEP(*(".event_subscription"))`), so a module never patches an app-side registry.
+Every payload field is publicly reachable — **except caps-word**, which has no event
+and no accessor at v0.2.1 *or* `main`. Upstream only gets it by substituting a
+forked `behavior_caps_word.c`, and only in adapter builds; its keyboard-side
+broadcaster never populates that bit. **Treat caps-word as unavailable.**
+
+**Confidence note.** The *fact* of upstream's reversal is hard evidence (real
+commits, read directly). The *mechanisms* in those commit messages are
+agent-authored hypotheses validated by field symptoms, not radio traces — medium
+confidence. What was verified independently in Zephyr and ZMK v0.2.1 source stands
+on its own.
+
+### Branch topology for the broadcaster — READ BEFORE STARTING
+
+The broadcaster is **keyboard-side** and therefore **cannot live on
+`display/scanner`** (D3: one repo, one `west.yml`, one ZMK revision). It forks from
+the keyboard line (ZMK v0.2.1). `display/scanner` and the broadcaster branch never
+merge in either direction.
+
+**Consequence — the wire layout is duplicated.** The scanner's decoder
+(`dispscan_packet.h`) and the broadcaster's encoder live on branches that can never
+share a file. Two copies of the same 26-byte layout must be kept in sync by hand.
+This is the real cost of D3 and it is not avoidable without a third shared repo.
+Any change to the layout must be applied to both, and the decode self-test
+(`dispscan_decode_test.c`) is the cheapest place to catch a drift.
 | ~~F2~~ | Orientation abstraction | **RULED** — compile-time Kconfig choice, two CI artifacts. See below. |
 
 ## Open risks
