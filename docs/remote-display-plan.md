@@ -387,19 +387,73 @@ has explicitly flagged central power as a concern, and the central is already th
 heaviest-radio half and the one carrying the unresolved hang. The scanner, by
 contrast, is a desk device that can be USB-powered or carry a far larger cell.
 
-> **If the display is USB-powered, its draw is irrelevant and the correct setting
-> is the SLOWEST advertising interval the wake latency tolerates** — minimising
-> central cost. That is the opposite of what the earlier revision recommended.
->
-> **Only if the display runs on battery** does spending central power to buy
-> scanner runtime make sense, and even then it is the owner's call, not a default.
-
-**Open question for the owner:** how is the display powered — USB, or battery? That
-single answer sets this knob's direction. Do not pick a default without it.
-
 `CONFIG_ZMK_STATUS_ADV_ACTIVE_INTERVAL_MS` is an **existing upstream Kconfig**, so
 either direction is configuration rather than a fork. *That* — and only that — was
 the sense in which the earlier "free" claim was true.
+
+### D9 — RULED: display is USB-powered; minimise central draw
+
+**Owner decision, 2026-08-07.** The display will be plugged into USB. Scanner power
+is a non-goal. **Optimise for the central half's battery.**
+
+**Setting: keep `ACTIVE_INTERVAL_MS` at ~1000 ms. Do not go to 200 ms, and do not
+go much slower either.** The cost curve flattens hard:
+
+| Active interval | Central cost @ 0 dBm | @ +8 dBm (our setting) | Wake latency @ 100% scan |
+|---|---|---|---|
+| 200 ms | ~50 µA | ~95 µA | 0.2 s |
+| **1000 ms** | **~10 µA** | **~19 µA** | **1.0 s** |
+| 2000 ms | ~5 µA | ~10 µA | 2.0 s |
+| 5000 ms | ~2 µA | ~4 µA | 5.0 s |
+
+Against a typical ZMK split-central baseline of a few hundred µA, 1 Hz costs
+roughly **2-5%** — genuinely small. Slowing to 5 s saves ~15 µA (low single-digit
+percent) and makes the display feel broken. **1 Hz is the knee of the curve.**
+
+The idle interval (30 s) costs ~0.3 µA and is effectively free — leave it.
+
+**Note on TX power.** The keyboard sets `CONFIG_BT_CTLR_TX_PWR_PLUS_8=y` for host
+range, and under Option B the beacon inherits it — roughly **doubling** the
+beacon's cost (nRF52840 TX is ~16 mA at +8 dBm vs ~4.8 mA at 0 dBm). A desk-range
+display needs nothing like +8 dBm. Per-advertising-set TX power exists only with
+extended advertising, i.e. Option C — but that carries the verified Zephyr 3.5
+assert blocker, and the saving is ~10 µA. **Not worth pursuing for power alone.**
+
+### Consequence: the scanner power state machine collapses
+
+D6's four-state design existed to manage *scanner* battery. With the display on
+USB, most of it is unnecessary:
+
+- **Scan at 100% duty, always.** No DARK-state duty reduction, no
+  `SLOW_INTERVAL_1` baseline, **no periodic census bursts**, no `bt_le_scan_stop/start`
+  transitions and their blind windows.
+- **NO-SIGNAL detection becomes fast and reliable** rather than a 10-15 minute
+  statistical inference. The awkward "reducing DARK duty forces the NO-SIGNAL
+  timeout way up" problem simply disappears.
+- **Activity inference gets easy.** At 100% duty essentially every beacon is
+  caught, so **S1 (advertising cadence) is now a reliable signal** — the k-of-window
+  test and its ~10 s evidence lag are no longer needed to disambiguate "idle" from
+  "missed it".
+
+**This also removes D6's dependency on owning the broadcaster.** S4 (a dedicated
+ACTIVE bit in `status_flags` 0x40) was needed only because cadence inference
+degraded at low scan duty. At 100% duty S1 suffices, so **D6 no longer pushes F1
+toward Option C.** Combined with the D6 finding that configuring the broadcaster
+beats owning it for power, F1 now rests on **D7 extractability and reliability
+alone**.
+
+### What survives of D6
+
+Going dark on inactivity is still wanted — but its justification is now **honest UX
+only**: never leave stale keyboard state displayed. It is not a power feature
+(saves 1-2% of a mains-powered device) and it is not a longevity feature (this
+panel cannot burn in; VCOM handles DC bias unconditionally).
+
+Two amendments to the earlier state machine:
+- **Drop the "USB present pins AWAKE" rule.** It was a battery heuristic and would
+  now defeat the requirement entirely, since USB is always present.
+- Keep AWAKE/DARK/NO-SIGNAL as *display* states driving only what is drawn. They no
+  longer drive scan parameters, because those are now constant.
 
 **Refines F1:** owning the broadcaster is worth *one bit* (a dedicated ACTIVE flag
 in `status_flags` 0x40) and one line of code. *Configuring* the broadcaster — which
