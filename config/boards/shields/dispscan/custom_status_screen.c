@@ -117,25 +117,44 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define GLYPH_SUBST '?'
 
 /* -------------------------------------------------------------------------
- * Colour
+ * Colour -- LVGL COLOUR CONSTANTS ARE INVERTED RELATIVE TO THE PANEL
  *
- * Non-inverted convention, same as ZMK's nice_view widgets/util.h: WHITE
- * background, BLACK content, which is what the reflective panel shows natively.
+ * CONFIRMED ON HARDWARE 2026-08-07: lv_color_white() renders BLACK on the
+ * nice!view, and lv_color_black() renders WHITE. Do not "fix" the names below
+ * to read more naturally -- they are correct as written.
  *
- * EXCEPT IN DARK. docs/remote-display-plan.md, "Rendering \"dark\" -- order is
- * inverted from ZMK's", is explicit: *"Fill black -- white reads as a dead
- * panel."* A blank white frame on a reflective LCD is indistinguishable from an
- * unpowered one, which is exactly the wrong signal for a state that means "the
- * keyboard is fine, it is just idle". So DARK paints a full-panel black frame.
+ * The chain, all verified in the pinned trees:
+ *   1. LVGL at LV_COLOR_FORMAT_I1 maps white to bit 1, black to bit 0.
+ *   2. ls0xx reports current_pixel_format = PIXEL_FORMAT_MONO01, and Zephyr's
+ *      lvgl_display_mono.c set_px_at_pos() CLEARS the destination bit for a set
+ *      source pixel in the MONO01 case (`*buf &= ~BIT(bit)`), starting from a
+ *      0xFF-filled buffer.
+ *   3. On a Sharp memory LCD a 0 bit is a BLACK pixel.
+ * Net: LVGL white -> panel black.
+ *
+ * ZMK's own nice_view widgets encode the same inversion, which is the clearest
+ * confirmation that this is expected rather than a misconfiguration here:
+ * widgets/util.h defines LVGL_FOREGROUND as lv_color_black() in the
+ * non-inverted case, and widgets/util.c then passes it to a descriptor it names
+ * `rect_white_dsc`. ZMK names those by what appears on the glass, not by the
+ * constant. Hence the stock nice!view look -- light content on a dark field --
+ * which is also what this screen produces.
+ *
+ * DARK therefore uses lv_color_white(). docs/remote-display-plan.md, "Rendering
+ * \"dark\"", is explicit: *"Fill black -- white reads as a dead panel."* A
+ * bright frame on a reflective LCD reads as broken, which is exactly the wrong
+ * signal for a state meaning "the keyboard is fine, it is just idle". Because
+ * DARK's panel-black equals the normal background, DARK is simply the ordinary
+ * field with every label hidden.
  *
  * Either way it is a DRAWN frame. display_blanking_on() must never be used
  * here: Zephyr's ls0xx.c only compiles its blanking hooks under `disp_en_gpios`,
  * which the nice!view does not expose, so the call is a silent no-op and the
  * panel would keep showing the last -- now stale -- frame forever.
  * ------------------------------------------------------------------------- */
-#define COL_BG lv_color_white()
-#define COL_FG lv_color_black()
-#define COL_DARK lv_color_black()
+#define COL_BG lv_color_white()   /* -> panel BLACK: the field */
+#define COL_FG lv_color_black()   /* -> panel WHITE: the content */
+#define COL_DARK lv_color_white() /* -> panel BLACK: fully extinguished */
 
 /* -------------------------------------------------------------------------
  * Object tree -- built ONCE in zmk_display_status_screen(), mutated thereafter.
@@ -254,14 +273,25 @@ static void set_text(lv_obj_t *obj, const char *txt) {
 }
 
 #ifdef CONFIG_DISPSCAN_FAKE_SOURCE
-/* The marker is never hidden, so on the black DARK frame it has to invert or it
- * would be black-on-black -- i.e. exactly the invisible state this fix exists to
- * prevent. */
+/* The marker is never hidden, in any state, including DARK.
+ *
+ * It used to flip colour in DARK, back when COL_DARK was believed to paint a
+ * bright frame. It does not -- see the colour block above; DARK's field is the
+ * same panel-black as COL_BG -- so the content colour is COL_FG throughout and
+ * the flip would have made the marker invisible, which is the precise failure
+ * the marker exists to prevent.
+ *
+ * Deliberately visible even in DARK: a dark screen that is quietly showing
+ * synthetic data is still a lie, and this is a dev-only build. `dark` is kept
+ * in the signature so the call sites stay symmetric with the other state
+ * transitions.
+ */
 static void fake_marker_set_dark(bool dark) {
+    ARG_UNUSED(dark);
     if (ui.lbl_fake == NULL) {
         return;
     }
-    lv_obj_set_style_text_color(ui.lbl_fake, dark ? COL_BG : COL_FG, LV_PART_MAIN);
+    lv_obj_set_style_text_color(ui.lbl_fake, COL_FG, LV_PART_MAIN);
 }
 #define FAKE_MARKER_SET_DARK(d) fake_marker_set_dark(d)
 #else
