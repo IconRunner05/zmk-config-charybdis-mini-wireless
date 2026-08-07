@@ -55,6 +55,77 @@ intentional; do not "fix" it.
 **landscape** (native 160x68) and **portrait** (logical 68x160). These are
 distinct layouts, not one layout rotated — the compositions differ.
 
+### D6 — Display sleeps on keyboard inactivity
+The display must go dark N seconds/minutes after the last keyboard activity and
+wake on the next. Rationale: panel longevity and scanner battery life.
+
+**The hard part:** the scanner has no keys, so "last keypress" is not locally
+observable. Activity must be *inferred* from the broadcast. Candidate signals,
+best first:
+1. **Advertising cadence.** The keyboard already switches between an active
+   interval (~1 s) and an idle interval (~30 s). A packet gap crossing the idle
+   threshold is a strong, zero-cost activity signal that needs no payload change.
+2. **Payload delta.** Any change in decoded status (layer, mods, profile,
+   battery) implies activity.
+3. **A dedicated flag.** `status_flags` has two unused bits (0x40, 0x80). Only
+   available if we own the broadcaster (see F1) — not usable under Option B
+   without diverging from the upstream format.
+
+Three states, not two: **AWAKE** → **DARK** (inactivity, data still tracked) →
+**NO SIGNAL** (nothing heard at all). Waking must be immediate on the first
+active-cadence packet.
+
+Note the scanner's own **scan duty cycle is the dominant power draw**, an order of
+magnitude above the ~1.2% SPI duty. Blanking the panel without also relaxing the
+scan window saves little. The sleep design must address both.
+
+### D7 — Keyboard-side broadcaster must be cleanly extractable
+All code that broadcasts to the display lives behind a single Kconfig gate,
+in its own module/directory, with **zero edits to shared keyboard config paths**.
+It must be reviewable as one self-contained diff and removable by flipping one
+symbol.
+
+**Why this matters beyond hygiene:** the central is the right half — already the
+split central *and* the host BLE endpoint *and* the trackball owner, and the half
+carrying the unresolved hang (see `crash-lag-investigation.md`). Any code added
+there must be trivially bisectable out. Extra advertising also costs battery on
+exactly the half with the heaviest radio load, so the active/idle interval choice
+is a real power decision, not a default to accept.
+
+**This tightens F1 considerably.** Option B reaches into ZMK's connectable
+advertising and cannot be gated to zero effect; Option C is a separate advertising
+set behind one Kconfig symbol. D7 favours C on architecture, independent of the
+earlier reliability argument.
+
+### D8 — Displays must associate with a specific keyboard
+Multiple keyboards and multiple displays may be in radio range simultaneously
+(office, desk with two builds, a friend's board). A display must show **one
+chosen keyboard**, deterministically, and must not flap to a neighbour's.
+
+Note the asymmetry: because this is broadcast, **one keyboard to many displays is
+free** — any number of displays can watch the same keyboard with no cost to the
+keyboard and no coordination. The problem is exactly one-directional: *which*
+keyboard does a given display bind to.
+
+Existing material in the payload:
+- `keyboard_id[4]` (offset 19) — a hash of `hwinfo_get_device_id()`, i.e. stable
+  per physical keyboard and independent of BLE address rotation.
+- `channel` (offset 25) — upstream's explicit pairing knob, with matching logic
+  `scanner_ch == 0 || scanner_ch >= 10 || kb_ch == 0 || scanner_ch == kb_ch`.
+
+Constraints that shape the answer:
+- The display has **no keys and no user button** (the XIAO exposes only reset), so
+  any runtime pairing needs a mechanism we do not currently have.
+- BLE addresses may rotate; binding on address alone is not stable. This is
+  precisely why upstream matches on `keyboard_id` and rewrites the address in
+  place when it changes.
+- The broadcast is **unencrypted**. A channel is a filter, not a security
+  boundary — anyone in range can read any keyboard's layer and battery. In a
+  shared office that is a real, if minor, disclosure. Worth stating plainly rather
+  than implying the channel protects anything.
+- Our display is single-keyboard and landscape-only; we do not want upstream's
+  3-slot multi-keyboard UI.
+
 ---
 
 ## Open forks (not yet ruled)
