@@ -1,0 +1,15 @@
+# dispscan — Charybdis remote status display shield.
+#
+# Keyless BLE-observer device: Seeed XIAO nRF52840 + nice!view. This file only
+# defines the shield symbol; everything else keys off it (Kconfig.defconfig)
+# or off the shield name (overlay / conf / keymap discovery).
+#
+# THE NAME HAS NO UNDERSCORE ON PURPOSE. ZMK's post_boards_shields.cmake treats
+# every underscore-trimmed prefix of a shield name as an additional candidate
+# for overlay/conf/keymap lookup, so `charybdis_scanner` would also match
+# `charybdis` and drag config/charybdis.{conf,keymap} — the KEYBOARD's files —
+# into this build. `dispscan` produces no prefixes at all. See the long note at
+# the top of dispscan.conf before renaming anything here.
+
+config SHIELD_DISPSCAN
+	def_bool $(shields_list_contains,dispscan)

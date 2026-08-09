@@ -1,0 +1,27 @@
+# Shield metadata — same shape as config/boards/shields/charybdis/charybdis.zmk.yml.
+# Not consumed by the build; it is what ZMK's tooling (and the setup/keymap
+# sites) read to describe a shield.
+#
+# `id` MUST stay underscore-free and MUST match the directory name: ZMK's
+# app/boards/post_boards_shields.cmake turns every underscore-trimmed prefix of
+# a shield name into an extra overlay/conf/keymap lookup candidate, which is how
+# the old `charybdis_scanner` name silently pulled in the keyboard's
+# config/charybdis.conf. See the long note at the top of dispscan.conf.
+#
+# `requires: [seeed_xiao]` -- this shield only wires up pins that exist on the
+# Seeed XIAO interconnect (app/boards/interconnects/seeed_xiao), so it is not a
+# pro_micro shield like the keyboard halves.
+# `exposes: [nice_view_header]` -- it defines the `nice_view_spi` bus that the
+# in-tree nice_view shield plugs into, exactly like ZMK's nice_view_adapter.
+# `studio: false` -- ZMK Studio is impossible here: it hard-requires
+# zmk,physical-layout nodes, and this device has no keys.
+file_format: "1"
+id: dispscan
+name: Charybdis Status Display (dispscan)
+type: shield
+url: https://github.com/IconRunner05/zmk-config-charybdis-mini-wireless
+requires: [seeed_xiao]
+exposes: [nice_view_header]
+studio: false
+features:
+  - display

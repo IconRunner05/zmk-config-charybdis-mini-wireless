@@ -1,0 +1,284 @@
+# dispscan — shield defaults.
+#
+# Only *defaults* belong here (a plain `.conf` fragment always wins over a
+# Kconfig.defconfig default). Hard requirements that must not be silently
+# overridden live in dispscan.conf instead.
+
+if SHIELD_DISPSCAN
+
+# The scanner is a separate BLE device from the keyboard. Give it its own name
+# so it can never be confused with (or shadowed by a stale bond of) the
+# keyboard, whose name is set in config/charybdis.conf. Max 16 chars.
+#
+# This is now a genuine default rather than a fallback in a tug-of-war: since
+# the shield was renamed to `dispscan`, config/charybdis.conf is no longer
+# pulled into this build by prefix matching, so nothing else assigns this
+# symbol. dispscan.conf still sets it explicitly — a .conf assignment is the
+# unambiguous single source, and this default only covers someone building the
+# shield without that fragment.
+config ZMK_KEYBOARD_NAME
+	default "CharyScan"
+
+# The whole point of the device. nice_view.conf also sets this, but the scanner
+# must not depend on being built together with a particular display shield.
+config ZMK_DISPLAY
+	default y
+
+# The font selection USED TO LIVE HERE, as a `choice ZMK_LV_FONT_DEFAULT_SMALL`
+# default. It has moved to dispscan.conf, for two reasons:
+#
+#   1. It is a hard requirement, not a preference. Every geometry constant in
+#      custom_status_screen.c is derived from unscii_8's 8 px advance, so this
+#      file's own rule at the top ("Only *defaults* belong here") puts it in the
+#      .conf.
+#   2. IT DID NOT WORK. Verified against a real build's build/zephyr/.config,
+#      which showed CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_12=y and
+#      "# CONFIG_ZMK_LV_FONT_DEFAULT_SMALL_UNSCII_8 is not set" -- i.e. the
+#      opposite of what this block asked for. Kconfig resolves a choice using
+#      the FIRST `default` it encounters in source order, and ZMK defines the
+#      choice with `default ZMK_LV_FONT_DEFAULT_SMALL_MONTSERRAT_12` in
+#      app/src/display/Kconfig, which app/Kconfig sources at line 284 -- long
+#      before it sources shield Kconfig.defconfig files at line 721. A shield
+#      default can never win that race. A `.conf` assignment can, because
+#      .conf fragments are applied after the whole Kconfig tree is built.
+#
+# (The build still linked only because LVGL's own `default LV_FONT_DEFAULT_UNSCII_8
+# if LV_CONF_MINIMAL` happened to pull lv_font_unscii_8 into the image via a
+# different symbol. That is luck, not a guarantee -- see dispscan.conf.)
+
+# --- Renderer limits ---------------------------------------------------------
+# Unconditional: the renderer uses it in every configuration, observer or not.
+# Mirrors the KEYBOARD's CONFIG_ZMK_BLE_PROFILE_COUNT, which -- like the central
+# side above -- the wire does not carry. Slots above this render "BT?", so a
+# keyboard built with more profiles looks like a decoder bug and is not one
+# (plan doc, review finding #5, which flagged the old hardcoded 4).
+config DISPSCAN_PROFILE_MAX
+	int "Highest BLE profile slot the keyboard can report"
+	default 4
+
+# --- The BLE observer --------------------------------------------------------
+# The product. Scans passively for the keyboard's status advertisement, decodes
+# the 26-byte payload and drives the renderer from it.
+#
+# Declared HERE rather than in Kconfig.shield for the same reason
+# DISPSCAN_FAKE_SOURCE is: it is shield-conditional *behaviour*, not the
+# shield's existence, and ZMK's own nice_view shield declares its prompted
+# NICE_VIEW_WIDGET_STATUS symbol in its Kconfig.defconfig too. The review's
+# observation that Kconfig.defconfig is conventionally for defaults stands --
+# but consistency with the symbol two blocks down (and with upstream) beats
+# splitting two sibling symbols across two files.
+config DISPSCAN_OBSERVER
+	bool "Scan for the keyboard's status advertisement"
+	default y
+	help
+	  Starts a 100%-duty passive BLE scan once ZMK's stack is up, matches the
+	  4-byte magic FF FF AB CD in manufacturer data, decodes the payload and
+	  feeds a liveness state machine that pushes AWAKE / DARK / NO SIGNAL to
+	  the status screen.
+
+	  Mutually exclusive with DISPSCAN_FAKE_SOURCE. With both n the renderer
+	  still builds and honestly shows NO SIGNAL forever.
+
+if DISPSCAN_OBSERVER
+
+# Sequenced AFTER ZMK's own BLE init so bt_enable() has already run. ZMK uses
+# CONFIG_ZMK_BLE_INIT_PRIORITY (default 50, zmk/app/Kconfig:507-509) at the
+# APPLICATION level for zmk_ble_init (zmk/app/src/ble.c:834), and passes NULL to
+# bt_enable(), which is Zephyr's synchronous form -- so a later priority in the
+# same level is sufficient. +1 rather than a large offset so that raising ZMK's
+# priority cannot silently overtake this. The code re-checks bt_is_ready()
+# anyway; see the comment block in dispscan_observer.c.
+config DISPSCAN_OBSERVER_INIT_PRIORITY
+	int "dispscan observer init priority"
+	default 51
+
+# --- The battery L/R swap ----------------------------------------------------
+# THE ONE PIECE OF THE CONTRACT THAT IS NOT ON THE WIRE. The payload carries the
+# advertising device's own battery at offset 5 and the other half's at offset 12
+# -- ROLE positions. Turning those into LEFT and RIGHT needs to know which
+# physical half is the central, and NO FIELD IN THE PAYLOAD SAYS SO. It lives in
+# the keyboard's CONFIG_ZMK_STATUS_ADV_CENTRAL_SIDE, in the other firmware
+# image, and this symbol is the scanner's mirror of it.
+#
+# FLIPPING THE KEYBOARD'S CENTRAL TO THE LEFT HALF WITHOUT FLIPPING THIS SWAPS
+# THE TWO BATTERIES ON SCREEN, SILENTLY. Both readings stay plausible, both keep
+# moving, nothing logs. It is invisible until someone drains one half and
+# watches the wrong bar fall.
+#
+# This is why the plan doc's D3 ("the only contract between them is the
+# advertisement payload byte layout") is NOT STRICTLY TRUE. The contract is the
+# byte layout plus the value of this symbol. Said plainly here rather than
+# discovered later.
+#
+# Defaults to RIGHT because our Charybdis central is the right half (D7).
+config DISPSCAN_CENTRAL_SIDE_RIGHT
+	bool "The keyboard's central (advertising) half is the RIGHT one"
+	default y
+	help
+	  Must match the keyboard's CONFIG_ZMK_STATUS_ADV_CENTRAL_SIDE. Set n if
+	  the central is the left half. Verify on glass: unplug one half and check
+	  that the bar which goes to N/A is the one you unplugged.
+
+# --- D8 binding --------------------------------------------------------------
+config DISPSCAN_KEYBOARD_ID_ALLOWLIST
+	string "Comma-separated keyboard_id allowlist (empty = discovery mode)"
+	default ""
+	help
+	  Values as PRINTED on the panel ("ID C0FFEE12"), e.g.
+	  "0xC0FFEE12,0xDEADBEEF". Matching is strict equality -- no wildcards, no
+	  promiscuous escape hatch, unlike upstream's channel matcher.
+
+	  EMPTY IS DISCOVERY MODE: the display binds to the strongest keyboard it
+	  hears and renders that keyboard's ID, so a freshly flashed device is
+	  usable immediately. Read the 8 hex digits off the screen, paste them
+	  here, rebuild. Setup and graceful degradation are the same mechanism.
+
+	  Discovery mode will happily show a stranger's keyboard. That is the
+	  documented cost of being usable out of the box; bind it once and the
+	  only wrong output the device can ever produce is NO SIGNAL.
+
+config DISPSCAN_DISCOVERY_RSSI_MARGIN_DB
+	int "Discovery mode: dB a challenger must beat the incumbent by"
+	default 6
+	help
+	  Only used when the allowlist is empty. A margin rather than a plain
+	  comparison, so two similarly-placed keyboards do not trade the display
+	  back and forth on measurement noise.
+
+# --- Liveness / activity timing ----------------------------------------------
+# Defaults from docs/remote-display-plan.md, D8 "Three liveness states".
+config DISPSCAN_LIVE_MS
+	int "Age below which a packet is LIVE (ms)"
+	default 5000
+
+config DISPSCAN_LOST_MS
+	int "Silence after which the keyboard is declared gone (ms)"
+	default 90000
+	help
+	  90 s = 3x the keyboard's ~30 s idle advertising interval, so a single
+	  dropped advert can never trigger NO SIGNAL. It must stay well above
+	  that idle cadence or a keyboard merely sitting there reads as dead.
+
+config DISPSCAN_ACTIVE_GAP_MS
+	int "Max inter-packet gap still counted as the ACTIVE cadence (ms)"
+	default 3000
+	help
+	  The keyboard advertises at ~1 s while in use and ~30 s while idle, so a
+	  gap under this means somebody is typing. 3 s = 3x the active interval,
+	  tolerating two dropped adverts. Must stay far below the 30 s idle
+	  cadence or the two are indistinguishable.
+
+config DISPSCAN_DARK_MS
+	int "Inferred keyboard inactivity before the panel goes dark (ms)"
+	default 120000
+	help
+	  D6, honest-UX only -- with a USB-powered display this saves no
+	  meaningful power. MUST exceed the keyboard's own ZMK_IDLE_TIMEOUT plus
+	  margin (90 s default): go dark sooner and the panel blanks while the
+	  keyboard is still advertising actively, then flickers back on the next
+	  keypress.
+
+config DISPSCAN_TICK_MS
+	int "Free-running state re-evaluation period (ms)"
+	default 1000
+	help
+	  DO NOT SET THIS TO 0 OR REMOVE THE TIMER IT DRIVES. The renderer seam is
+	  push-only, so a dead keyboard produces no callbacks at all; without a
+	  timer that runs when nothing happens, the panel holds a live-looking
+	  screen forever. This is the single most important line in the observer
+	  slice. Keep it well under DISPSCAN_LIVE_MS.
+
+# --- Decoder self-test -------------------------------------------------------
+config DISPSCAN_DECODE_SELFTEST
+	bool "Run hand-built payloads through the decoder at boot and log results"
+	default y
+	help
+	  NO BROADCASTER EXISTS YET (plan Phase 3 is gated behind an unstarted
+	  soak), so the decoder cannot be exercised over the air. This feeds ~13
+	  hand-built buffers through the real dispscan_packet_decode() three
+	  seconds after boot -- past USB CDC enumeration -- and logs each decode:
+	  the unmasked profile byte 0x10|3, a 4-character unterminated layer name,
+	  a name truncated mid-codepoint, battery 0 meaning N/A, layer 255, all
+	  modifier bits, an accepted minor bump, a rejected unknown major, a
+	  25-byte payload, a zero-length payload, two wrong-magic payloads, and a
+	  30-byte payload.
+
+	  Set to n once a real broadcaster can do this job over the air.
+
+# --- Packet trace ------------------------------------------------------------
+config DISPSCAN_PACKET_TRACE
+	bool "Log every accepted advertisement with its decoded fields"
+	default y
+	help
+	  BRING-UP INSTRUMENT. Logs one LOG_INF line per accepted advertisement on
+	  the BT RX thread, carrying the full decoded payload plus `dt`, the gap in
+	  milliseconds since the previous accepted packet.
+
+	  It exists because the panel cannot distinguish "the keyboard sent a value
+	  we do not render" from "we rendered a value the keyboard did not send".
+	  The first two defects found on air -- the left battery reading N/A, and an
+	  apparent ~5 s refresh against a 1 s configured active period -- are both
+	  decided by the raw decode and the arrival delta, so both are printed and
+	  neither is inferred.
+
+	  `dt` is what the RECEIVER observes, which is the honest number. It is not
+	  the transmitter's configured period, and the two are allowed to disagree:
+	  a missed advertising event shows up here as a doubled dt, which is exactly
+	  the evidence needed to tell a slow transmitter from a lossy link.
+
+	  SET THIS TO n BEFORE ANY POWER OR TIMING MEASUREMENT, and before the
+	  device is considered shipped. It costs a log line per beacon and it keeps
+	  CONFIG_ZMK_USB_LOGGING load-bearing.
+
+endif # DISPSCAN_OBSERVER
+
+# --- Development scaffold ----------------------------------------------------
+# Drives the status screen from a synthetic status struct so the render path can
+# be validated on hardware before any BLE code exists (docs/remote-display-plan.md,
+# "Build order" step 2). This is the ONLY thing that calls
+# dispscan_status_update() today.
+#
+# MUTUALLY EXCLUSIVE WITH DISPSCAN_OBSERVER, and both are independently
+# removable. `depends on !DISPSCAN_OBSERVER` makes the exclusion a Kconfig fact
+# rather than a convention -- with the observer on, this symbol cannot be set at
+# all and the file does not compile, so the two can never both be pushing into
+# dispscan_status_update() and fighting over the panel.
+#
+# It is NOT deleted, on purpose. It remains the only way to exercise the
+# renderer without a broadcaster, and NO BROADCASTER EXISTS YET (plan Phase 3 is
+# gated behind an unstarted soak). Deleting it now would leave the render path
+# with no exercise route at all until Phase 3 lands.
+#
+# `default y if !DISPSCAN_OBSERVER`: whenever the observer is off, something
+# should still drive the screen, otherwise the device boots to a permanent NO
+# SIGNAL and proves nothing. Turning BOTH off is legal and is a supported
+# configuration -- the renderer builds and honestly shows NO SIGNAL forever.
+# Nothing else depends on this symbol: CMakeLists.txt guards the source with
+# zephyr_library_sources_ifdef, and the renderer holds no reference back.
+#
+# Declared here rather than in Kconfig.shield because it is shield-conditional
+# behaviour, not the shield's existence. Same shape as nice_view's own
+# NICE_VIEW_WIDGET_STATUS, which is likewise a prompted `config` inside that
+# shield's Kconfig.defconfig.
+config DISPSCAN_FAKE_SOURCE
+	bool "Drive the dispscan status screen from a fake data source"
+	depends on !DISPSCAN_OBSERVER
+	default y if !DISPSCAN_OBSERVER
+	help
+	  Runs a slow Zephyr timer that synthesises decoded keyboard status and
+	  pushes it to the renderer. The 40-step cycle sweeps each widget through
+	  a representative range, visits all three display states (AWAKE / DARK /
+	  NO SIGNAL), and then spends two dedicated ticks on the layout's actual
+	  worst cases -- layer 255 with a full 4-character name, out-of-range
+	  batteries, an illegal profile slot, WPM 255, every modifier held, and a
+	  layer name containing a truncated multi-byte codepoint -- alongside the
+	  wire contract's 0 = "battery N/A" case.
+
+	  The panel carries a visible "FAKE" marker in every state while this is
+	  enabled, so a device showing synthetic data cannot be mistaken for one
+	  receiving real packets.
+
+	  Development aid only. Set to n once a real BLE observer supplies
+	  dispscan_status_update().
+
+endif # SHIELD_DISPSCAN

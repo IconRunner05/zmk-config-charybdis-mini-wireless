@@ -1,0 +1,54 @@
+/*
+ * dispscan — Charybdis remote status display, board-independent devicetree.
+ *
+ * SPDX-License-Identifier: MIT
+ *
+ * This device has NO KEYS. It is a passive BLE observer with a nice!view
+ * attached; the only physical peripheral is the SPI display, which is wired up
+ * per-board in boards/xiao_ble_nrf52840_zmk.overlay.
+ *
+ * So why is there a kscan here at all?
+ *
+ *   ZMK `main` hard-fails to build a keyless keyboard. Two independent places
+ *   demand it:
+ *     * app/src/keymap.c    -- `#error "Keymap node not found"` unless a
+ *                              `zmk,keymap` node exists (see
+ *                              config/dispscan.keymap).
+ *     * app/src/physical_layouts.c -- `layouts[]` is only defined if there is a
+ *                              zmk,physical-layout node, a chosen
+ *                              zmk,matrix-transform, or a chosen zmk,kscan.
+ *                              Without one the app does not link.
+ *
+ *   `zmk,kscan-mock` is the cheapest way to satisfy the second: it is a pure
+ *   software driver, so it claims ZERO GPIO. All three of its int properties
+ *   are optional per app/dts/bindings/zmk,kscan-mock.yaml.
+ *
+ * Why 1x1 and not 0x0:
+ *   The chosen-kscan path in physical_layouts.c builds a *synthetic* matrix
+ *   transform, and app/include/zmk/matrix.h then derives
+ *   ZMK_KEYMAP_LEN = rows * columns. With 0x0 that is 0, which makes the
+ *   keymap a zero-length array that the keymap's single `<&none>` binding
+ *   over-initialises (an "excess elements in array initializer" diagnostic).
+ *   1x1 is the smallest size that exactly matches a one-binding keymap, still
+ *   costs no GPIO, and keeps every keymap array non-degenerate.
+ *
+ * Why `events` is present at all:
+ *   kscan_mock.c does `uint32_t events[DT_INST_PROP_LEN(n, events)]` and
+ *   `.events = DT_INST_PROP(n, events)` unconditionally, so the property must
+ *   exist or the driver does not compile. `<0>` is a single event decoding to
+ *   "row 0, column 0, released" fired once at boot; it lands on `&none` and is
+ *   a no-op. There is no way to express "no events" that still compiles.
+ */
+
+/ {
+    chosen {
+        zmk,kscan = &kscan0;
+    };
+
+    kscan0: kscan {
+        compatible = "zmk,kscan-mock";
+        rows = <1>;
+        columns = <1>;
+        events = <0>;
+    };
+};
