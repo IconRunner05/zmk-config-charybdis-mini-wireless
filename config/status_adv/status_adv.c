@@ -171,6 +171,18 @@
 #include <zmk/wpm.h>
 #endif
 
+/*
+ * The peripheral battery PULL. Public header, declared at
+ * app/include/zmk/split/bluetooth/central.h:22 -- unlike update_advertising(),
+ * which is declared in no header and is therefore off limits under D7. ZMK's
+ * own central_bas_proxy.c is the other caller, which is exactly why this is the
+ * right source: it is the same value the proxy serves over GATT, so what the
+ * display shows and what a phone's battery viewer shows cannot disagree.
+ */
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+#include <zmk/split/bluetooth/central.h>
+#endif
+
 #include "status_adv_wire.h"
 
 LOG_MODULE_REGISTER(charybdis_status_adv, CONFIG_CHARYBDIS_STATUS_ADV_LOG_LEVEL);
@@ -410,6 +422,39 @@ static void build_payload(void) {
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
     payload[STATUS_ADV_OFF_BATTERY_LEVEL] = zmk_battery_state_of_charge();
 #endif
+    /*
+     * PULL, DO NOT TRUST THE EVENT. Verified on air: the event-fed
+     * `peripheral_batt` was 0 in 100% of 164 captured advertisements while
+     * ZMK's own BAS proxy was simultaneously serving 23% for the same half, so
+     * the other half's battery rendered as N/A on the panel forever.
+     *
+     * The root cause of the missing event was never established, and that is
+     * the point: the listener and all three ZMK_SUBSCRIPTION entries were
+     * confirmed present in the linked ELF, and ZMK does issue an initial
+     * bt_gatt_read at discovery (central.c:664) in addition to subscribing, so
+     * every explanation left standing was a timing story about somebody else's
+     * event ordering. A pull has no ordering to get wrong.
+     *
+     * It also matches how EVERY other field in this function is sampled --
+     * read the current value at tick time -- so the event-fed member was the
+     * odd one out to begin with.
+     *
+     * -ENOTCONN (split down) and -EINVAL (bad slot) both leave the byte at 0,
+     * which the wire contract already defines as N/A. Failing to a documented
+     * "unknown" is correct here; the alternative is showing the last-known
+     * reading of a half that may have been off for hours.
+     */
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+    {
+        uint8_t lvl = 0;
+
+        if (zmk_split_get_peripheral_battery_level(0, &lvl) == 0) {
+            peripheral_batt = lvl;
+        } else {
+            peripheral_batt = 0;
+        }
+    }
+#endif
     payload[STATUS_ADV_OFF_PERIPHERAL_BATTERY + 0] = peripheral_batt;
     /* [1] and [2] are aux slots for boards with more than two halves. 0 = N/A. */
 
@@ -620,6 +665,39 @@ static bool split_ok(void) {
     if (STATUS_ADV_EXPECTED_PERIPHERALS == 0) {
         return true;
     }
+
+    /*
+     * REFRESH FROM THE PULL BEFORE TRUSTING THE LATCH.
+     *
+     * `split_connected` used to be fed only by the peripheral-battery event,
+     * using state_of_charge == 0 as the "link went down" sentinel. The
+     * adversarial review called that signal fragile in both directions, and
+     * the on-air capture then showed the event never arriving at all -- which
+     * means split_connected sat false from boot, split_ok() fell through to
+     * the grace-expiry branch, and the T_IFS hold-off this function exists to
+     * provide was silently inoperative. It never failed loudly because
+     * "grace expired" and "split is up" produce identical behaviour.
+     *
+     * zmk_split_get_peripheral_battery_level() returns -ENOTCONN precisely
+     * when peripherals[0].state != PERIPHERAL_SLOT_STATE_CONNECTED
+     * (central.c:411-413), so it reports the connection state directly rather
+     * than inferring it from a battery value that is also a legal reading.
+     * A battery of 0 no longer has to mean two different things.
+     */
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
+    {
+        uint8_t lvl;
+        bool now_up = (zmk_split_get_peripheral_battery_level(0, &lvl) == 0);
+
+        if (now_up != split_connected) {
+            split_connected = now_up;
+            if (!now_up) {
+                split_down_since = k_uptime_get();
+            }
+        }
+    }
+#endif
+
     if (split_connected) {
         return true;
     }
