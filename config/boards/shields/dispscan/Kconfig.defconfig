@@ -205,6 +205,31 @@ config DISPSCAN_DECODE_SELFTEST
 
 	  Set to n once a real broadcaster can do this job over the air.
 
+# --- Packet trace ------------------------------------------------------------
+config DISPSCAN_PACKET_TRACE
+	bool "Log every accepted advertisement with its decoded fields"
+	default y
+	help
+	  BRING-UP INSTRUMENT. Logs one LOG_INF line per accepted advertisement on
+	  the BT RX thread, carrying the full decoded payload plus `dt`, the gap in
+	  milliseconds since the previous accepted packet.
+
+	  It exists because the panel cannot distinguish "the keyboard sent a value
+	  we do not render" from "we rendered a value the keyboard did not send".
+	  The first two defects found on air -- the left battery reading N/A, and an
+	  apparent ~5 s refresh against a 1 s configured active period -- are both
+	  decided by the raw decode and the arrival delta, so both are printed and
+	  neither is inferred.
+
+	  `dt` is what the RECEIVER observes, which is the honest number. It is not
+	  the transmitter's configured period, and the two are allowed to disagree:
+	  a missed advertising event shows up here as a doubled dt, which is exactly
+	  the evidence needed to tell a slow transmitter from a lossy link.
+
+	  SET THIS TO n BEFORE ANY POWER OR TIMING MEASUREMENT, and before the
+	  device is considered shipped. It costs a log line per beacon and it keeps
+	  CONFIG_ZMK_USB_LOGGING load-bearing.
+
 endif # DISPSCAN_OBSERVER
 
 # --- Development scaffold ----------------------------------------------------

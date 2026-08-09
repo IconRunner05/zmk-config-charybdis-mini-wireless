@@ -297,6 +297,43 @@ static bool ad_parse_cb(struct bt_data *data, void *user_data) {
         return false;
     }
 
+#if IS_ENABLED(CONFIG_DISPSCAN_PACKET_TRACE)
+    /*
+     * BRING-UP INSTRUMENT, NOT A FEATURE. Turn CONFIG_DISPSCAN_PACKET_TRACE off
+     * before any power or timing measurement -- it logs once per accepted
+     * advertisement on the BT RX thread.
+     *
+     * It exists to separate two questions that the panel alone cannot: "is the
+     * keyboard sending a value we do not render" versus "are we rendering a
+     * value the keyboard did not send". Both reported bring-up defects -- the
+     * left battery reading N/A, and an apparent ~5 s refresh against a stated
+     * 1 s active period -- are answered by the raw decode plus the arrival
+     * delta, so both are printed here and neither is inferred.
+     *
+     * `dt` is the gap since the previous ACCEPTED packet from any keyboard, in
+     * ms. It is the observed beacon period as the receiver actually sees it,
+     * which is the number that matters -- not the transmitter's configured one.
+     */
+    {
+        static int64_t last_trace_ms;
+        int64_t dt = (last_trace_ms == 0) ? 0 : (now - last_trace_ms);
+
+        last_trace_ms = now;
+
+        LOG_INF("dispscan trace: dt=%lldms rssi=%d id=%08X v%u.%u L%u \"%s\" prof=%u "
+                "battL=%u battR=%u mods=%02X wpm=%u caps=%u usb=%u/%u ble=%u/%u",
+                dt, (int)info->rssi, (unsigned int)decoded.keyboard_id,
+                (unsigned int)DISPSCAN_VERSION_MAJOR(decoded.version),
+                (unsigned int)DISPSCAN_VERSION_MINOR(decoded.version),
+                (unsigned int)decoded.active_layer, decoded.layer_name,
+                (unsigned int)decoded.profile_slot, (unsigned int)decoded.battery_left,
+                (unsigned int)decoded.battery_right, (unsigned int)decoded.modifiers,
+                (unsigned int)decoded.wpm, (unsigned int)decoded.caps_word,
+                (unsigned int)decoded.usb_connected, (unsigned int)decoded.usb_hid_ready,
+                (unsigned int)decoded.ble_connected, (unsigned int)decoded.ble_bonded);
+    }
+#endif /* CONFIG_DISPSCAN_PACKET_TRACE */
+
     dispscan_link_on_packet(&decoded, info->rssi);
 
     /* Our AD element is found and consumed; nothing else in this advertisement
