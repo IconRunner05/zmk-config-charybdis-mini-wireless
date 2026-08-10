@@ -110,7 +110,7 @@ endef
 # =============================================================================
 
 .PHONY: help init update build left right reset pristine clean firmware \
-        dispscan dispscan-init
+        dispscan dispscan-init dispscan-fake
 
 help: ## Show this help
 	@echo ""
@@ -257,6 +257,16 @@ DISPSCAN_BOARD  := xiao_ble/nrf52840/zmk
 DISPSCAN_SHIELD := dispscan nice_view
 DISPSCAN_UF2    := dispscan-xiao_ble-zmk.uf2
 
+# UI-validation image: CONFIG_DISPSCAN_OBSERVER=n, which makes
+# CONFIG_DISPSCAN_FAKE_SOURCE default y (they are mutually exclusive in
+# Kconfig). Drives the panel from a synthetic status struct, so every widget,
+# every value extreme and all three display states are exercised on one flash
+# with no keyboard broadcasting -- and the screen carries a "FAKE" marker in
+# every state so the device can never be mistaken for one showing real data.
+# Distinct filename because both images are flashable and confusing them would
+# be easy.
+DISPSCAN_FAKE_UF2 := dispscan-FAKE-xiao_ble-zmk.uf2
+
 DISPSCAN_VOL      := zmk-workspace-dispscan
 DISPSCAN_STAGE    := $(HOME)/Docker/zmk-config-dispscan
 DISPSCAN_SENTINEL := $(HOME)/Docker/.zmk-dispscan-initialized
@@ -327,6 +337,29 @@ dispscan: ## Display: build the remote status display image (DISPSCAN_UF2)
 		/firmware/$(DISPSCAN_UF2)
 	@cp "$(FIRMWARE_STAGE)/$(DISPSCAN_UF2)" "$(FIRMWARE_DIR)/$(DISPSCAN_UF2)"
 	@echo "✓ Display → $(FIRMWARE_DIR)/$(DISPSCAN_UF2)"
+	@echo ""
+
+dispscan-fake: ## Display: build the UI-validation image (fake data, no radio)
+	@if [ ! -f "$(DISPSCAN_SENTINEL)" ]; then \
+		echo ""; echo "✗ Display workspace not initialized. Run: make dispscan-init"; \
+		echo ""; exit 1; \
+	fi
+	$(call sync_dispscan_config)
+	@echo ""
+	@echo "→ Building $(DISPSCAN_SHIELD) with the FAKE source (no BLE observer)"
+	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
+	$(DISPSCAN_BUILD) west build \
+		-s /workspace/zmk/app \
+		-d /workspace/build/dispscan-fake \
+		-b $(DISPSCAN_BOARD) \
+		-- \
+		-DZMK_CONFIG=/workspace/config \
+		-DSHIELD="$(DISPSCAN_SHIELD)" \
+		-DCONFIG_DISPSCAN_OBSERVER=n
+	$(DISPSCAN_CP) cp /workspace/build/dispscan-fake/zephyr/zmk.uf2 \
+		/firmware/$(DISPSCAN_FAKE_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(DISPSCAN_FAKE_UF2)" "$(FIRMWARE_DIR)/$(DISPSCAN_FAKE_UF2)"
+	@echo "✓ Display (FAKE) → $(FIRMWARE_DIR)/$(DISPSCAN_FAKE_UF2)"
 	@echo ""
 
 # ─── Cache Management ─────────────────────────────────────────────────────────
