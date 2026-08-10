@@ -38,22 +38,25 @@ FIELD = "#101010"
 INK = "#f4f4f4"
 
 # --- geometry, mirrored from custom_status_screen.c -------------------------
-MARGIN = 2
-BAND_A_Y, BAND_B_Y, BAND_C_Y, BAND_D_Y = 0, 18, 35, 54
+# MARGIN is the uniform safe-area inset, on all four sides. Every constant below
+# is written as MARGIN + n so the two files can be compared line by line.
+MARGIN = 4
+BAND_A_Y, BAND_B_Y = MARGIN, MARGIN + 17
+BAND_C_Y, BAND_D_Y = MARGIN + 33, MARGIN + 51
 
-EP_USB_X, EP_USB_STATE_X = 2, 12
-EP_BT_X, EP_BT_DIGIT_X, EP_BT_STATE_X = 22, 32, 41
+EP_USB_X, EP_USB_STATE_X = MARGIN, MARGIN + 10
+EP_BT_X, EP_BT_DIGIT_X, EP_BT_STATE_X = MARGIN + 20, MARGIN + 30, MARGIN + 39
 EP_STATE_DY = 9
 
-BATT_L_SIDE_X, BATT_L_GAUGE_X, BATT_L_TEXT_X = 2, 12, 38
-BATT_R_SIDE_X, BATT_R_GAUGE_X, BATT_R_TEXT_X = 84, 94, 120
+BATT_L_SIDE_X, BATT_L_GAUGE_X, BATT_L_TEXT_X = MARGIN, MARGIN + 10, MARGIN + 37
+BATT_R_SIDE_X, BATT_R_GAUGE_X, BATT_R_TEXT_X = MARGIN + 83, MARGIN + 93, MARGIN + 120
 GAUGE_W, GAUGE_H = 22, 11
 GAUGE_FILL_MAX_W, GAUGE_FILL_H, GAUGE_FILL_INSET = 18, 7, 2
 GAUGE_NUB_W, GAUGE_NUB_H, GAUGE_DY = 2, 5, 1
 
-MOD_COUNT, MOD_ICON_W, MOD_PITCH, MOD_FIRST_X = 4, 14, 18, 2
+MOD_COUNT, MOD_ICON_W, MOD_PITCH, MOD_FIRST_X = 4, 14, 18, MARGIN
 MOD_UNDERLINE_DY, MOD_UNDERLINE_H = 15, 1
-MARKER_DY, STALE_MARKER_X = 4, 82
+MARKER_DY, STALE_MARKER_X = 4, MARGIN + 74
 
 CHAR_W = 8  # both faces
 FONT_TALL, FONT_SMALL = 13, 9
@@ -165,8 +168,10 @@ def screen(g, state):
     p = [rect(0, 0, PANEL_W, PANEL_H, FIELD)]
 
     if state.get("nosig"):
-        p.append(text("-- NO SIGNAL --", PANEL_W // 2, 21, FONT_TALL, "middle"))
-        p.append(text("no beacon heard", PANEL_W // 2, 37, FONT_SMALL, "middle"))
+        # Centred on the panel midline, not on the safe area -- see the comment
+        # at the NO_SIGNAL construction in custom_status_screen.c.
+        p.append(text("-- NO SIGNAL --", PANEL_W // 2, 20, FONT_TALL, "middle"))
+        p.append(text("no beacon heard", PANEL_W // 2, 38, FONT_SMALL, "middle"))
         return "".join(p)
     if state.get("dark"):
         return "".join(p)
@@ -189,11 +194,12 @@ def screen(g, state):
         p.append(text(batt_text(pct), tx, BAND_B_Y, FONT_TALL))
 
     # band C -- modifier keycaps with an underline under the held ones
+    # Mac keycaps, matching CONFIG_DISPSCAN_MAC_MODIFIERS=y (the default).
     icons = [
         "dispscan_control_icon",
         "dispscan_shift_icon",
-        "dispscan_alt_icon",
-        "dispscan_win_icon",
+        "dispscan_opt_icon",
+        "dispscan_cmd_icon",
     ]
     for i, name in enumerate(icons):
         x = MOD_FIRST_X + i * MOD_PITCH
@@ -207,9 +213,10 @@ def screen(g, state):
             text("CAPS", PANEL_W - MARGIN, BAND_C_Y + MARKER_DY, FONT_SMALL, "end")
         )
 
-    # band D
-    p.append(text(f"WPM {state['wpm']}", MARGIN, BAND_D_Y, FONT_SMALL))
-    p.append(text(state["right"], PANEL_W - MARGIN, BAND_D_Y, FONT_SMALL, "end"))
+    # band D -- RSSI only; the left half is empty except on a FAKE build
+    p.append(text(state["rssi"], PANEL_W - MARGIN, BAND_D_Y, FONT_SMALL, "end"))
+    if state.get("fake"):
+        p.append(text("FAKE", MARGIN, BAND_D_Y, FONT_SMALL))
     return "".join(p)
 
 
@@ -217,7 +224,7 @@ def screen(g, state):
 # source emits on purpose, and the two non-AWAKE states.
 FRAMES = [
     (
-        "AWAKE — typical, discovery mode",
+        "AWAKE — typical",
         dict(
             usb="dispscan_sym_open",
             bt="dispscan_sym_ok",
@@ -226,14 +233,13 @@ FRAMES = [
             battl=87,
             battr=92,
             mods=[0, 1, 0, 1],
-            wpm=42,
             caps=False,
             stale=False,
-            right="ID C0FFEE12",
+            rssi="-58dBm",
         ),
     ),
     (
-        "AWAKE — bound build, RSSI in band D, left half N/A",
+        "AWAKE — left half N/A, stale data, USB attached",
         dict(
             usb="dispscan_sym_ok",
             bt="dispscan_sym_open",
@@ -242,10 +248,9 @@ FRAMES = [
             battl=0,
             battr=64,
             mods=[0, 0, 0, 0],
-            wpm=0,
             caps=False,
             stale=True,
-            right="-58dBm",
+            rssi="-91dBm",
         ),
     ),
     (
@@ -258,10 +263,25 @@ FRAMES = [
             battl=255,
             battr=101,
             mods=[1, 1, 1, 1],
-            wpm=255,
             caps=True,
             stale=True,
-            right="ID C0FFEE12",
+            rssi="-128dBm",
+        ),
+    ),
+    (
+        "AWAKE — a FAKE build, marker in the vacated band D left",
+        dict(
+            usb="dispscan_sym_nok",
+            bt="dispscan_sym_nok",
+            profile="3",
+            layer="L1 SYM",
+            battl=40,
+            battr=100,
+            mods=[1, 0, 1, 0],
+            caps=True,
+            stale=False,
+            rssi="-73dBm",
+            fake=True,
         ),
     ),
     ("DARK — keyboard idle, data still good", dict(dark=True)),

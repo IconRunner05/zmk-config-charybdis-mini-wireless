@@ -70,7 +70,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * 120` never reaches 3-digit-plus territory. So the layout's RISKIEST branches
  * -- the ones this whole slice exists to de-risk on glass -- were precisely the
  * ones never emitted: "L255 ABCD" (the widest layer string), the battery
- * out-of-range rendering, the '?' profile-digit fallback, "WPM 255", and the
+ * out-of-range rendering, the '?' profile-digit fallback, and the
  * non-ASCII layer-name substitution.
  *
  * Two ticks per cycle are therefore given over to those extremes. They are
@@ -187,7 +187,9 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
     /* Toggles every other tick — slow enough to see, fast enough to catch. */
     s->caps_word = ((a / 2) % 2) == 1;
 
-    /* 0..119, hitting 0 (the "WPM off on the keyboard" case) and 3-digit
+    /* Not drawn by the current composition, but still decoded and still swept:
+     * the fake source models the wire, not the picture.
+     * 0..119, hitting 0 (the "WPM off on the keyboard" case) and 3-digit
      * values. Coprime-ish stride so consecutive ticks differ visibly. */
     s->wpm = (uint8_t)((a * 17) % 120);
 
@@ -234,9 +236,14 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
          *   battery 255 / 101         -> the out-of-range rendering, both sides
          *                                (no gauge drawn, real value in text)
          *   profile 7                 -> above DISPSCAN_PROFILE_MAX, so '?'
-         *   wpm 255                   -> "WPM 255", the 7-char worst case
          *   all modifiers + caps      -> all four underlines lit, plus "CAPS"
-         * If any of these clips or overlaps, it is visible on this one frame. */
+         * If any of these clips or overlaps, it is visible on this one frame.
+         *
+         * `wpm` is still set to its 255 extreme below even though the renderer
+         * no longer draws it: this file's job is to produce a worst-case
+         * DECODED STATUS, not a worst-case picture, and the field is still on
+         * the wire and still crosses the seam. If WPM is ever drawn again the
+         * extreme is already here. */
         s->active_layer = 255;
         memcpy(s->layer_name, wire_layer_name_widest, DISPSCAN_LAYER_NAME_WIRE_LEN);
         s->layer_name[DISPSCAN_LAYER_NAME_WIRE_LEN] = '\0';

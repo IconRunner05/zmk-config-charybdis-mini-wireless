@@ -146,37 +146,20 @@ config DISPSCAN_DISCOVERY_RSSI_MARGIN_DB
 	  back and forth on measurement noise.
 
 # --- Presentation ------------------------------------------------------------
-# Band D's right-hand slot is one field with two possible identities, and this
-# symbol is which. The keyboard id is an 11-character field that matters exactly
-# once -- during binding, when the procedure is "read the hex digits off the
-# panel and paste them into the allowlist above". After that it is a constant
-# occupying a fifth of a 160x68 screen forever, so the slot switches to the
-# packet RSSI, which answers the live question ("is this about to drop out")
-# that the panel is otherwise silent about.
+# THE KEYBOARD ID IS NO LONGER ON THE PANEL, and that changes the binding
+# procedure documented above. It used to occupy band D so it could be read off
+# the glass; it was removed as part of decluttering the composition.
 #
-# DERIVED, NOT CHOSEN: it follows the allowlist being empty, i.e. exactly the
-# condition dispscan_observer.c calls discovery mode. Deliberately a Kconfig
-# symbol rather than a test in the C: the natural spelling there
-# (`sizeof(CONFIG_..._ALLOWLIST) == 1`) is not legal in a preprocessor #if,
-# and Kconfig compares strings natively. It also makes the coupling visible in
-# menuconfig instead of buried in a header.
+# Read it from the SERIAL LOG instead. dispscan_observer.c already logs
+#   "dispscan: bound to keyboard_id %08X (rssi %d)"
+# at LOG_INF the moment it binds, and CONFIG_ZMK_USB_LOGGING is on in
+# dispscan.conf, so the value is available over USB CDC with no extra code.
+# Plug the display in, watch the console, copy the eight hex digits into
+# DISPSCAN_KEYBOARD_ID_ALLOWLIST above.
 #
-# No prompt -- overriding it independently of the allowlist would produce a
-# display showing an id it is not binding on, or binding on an id it will not
-# show. Neither is a state worth being able to reach.
-config DISPSCAN_SHOW_KEYBOARD_ID
-	bool
-	default y if DISPSCAN_KEYBOARD_ID_ALLOWLIST = ""
-config DISPSCAN_MAC_MODIFIERS
-	bool "Draw Mac modifier keycaps instead of Windows ones"
-	help
-	  Picks which vendored glyph stands for the GUI and ALT classes: the
-	  command and option keycaps when y, the Windows and Alt keycaps when n.
-
-	  Cosmetic only. The wire carries modifier CLASSES, not key legends, and
-	  cannot distinguish left from right at all (dispscan_status.h, trap #4),
-	  so this changes what you see and nothing about what is decoded.
-
+# If USB logging is ever turned off -- it is marked DEV ONLY, and there is a
+# standing note to disable it before power measurement -- that is the last route
+# to the id, and the on-panel field has to come back.
 # --- Liveness / activity timing ----------------------------------------------
 # Defaults from docs/remote-display-plan.md, D8 "Three liveness states".
 config DISPSCAN_LIVE_MS
@@ -263,6 +246,34 @@ config DISPSCAN_PACKET_TRACE
 	  CONFIG_ZMK_USB_LOGGING load-bearing.
 
 endif # DISPSCAN_OBSERVER
+
+# --- Presentation ------------------------------------------------------------
+# OUTSIDE the observer block, and that placement is load-bearing rather than
+# tidy. It lived inside `if DISPSCAN_OBSERVER` for one commit, which meant the
+# symbol did not EXIST in a fake-source build -- so IS_ENABLED() in
+# custom_status_screen.c evaluated false and the UI-validation image, the one
+# built specifically to check the composition on glass, silently rendered the
+# Windows keycaps this option is meant to replace. Caught by checking which
+# glyphs the linker actually kept, not by reading the Kconfig.
+#
+# The rule this illustrates: a symbol that describes what is DRAWN must not
+# depend on where the DATA comes from. The renderer is compiled unconditionally
+# and both sources feed the same seam.
+config DISPSCAN_MAC_MODIFIERS
+	bool "Draw Mac modifier keycaps instead of Windows ones"
+	default y
+	help
+	  Picks which vendored glyph stands for the GUI and ALT classes: the
+	  command and option keycaps when y, the Windows and Alt keycaps when n.
+
+	  DEFAULTS TO MAC because that is what this keyboard is driven from. The
+	  keymap does carry conditional layers for both hosts, so a Windows session
+	  is not hypothetical -- but the modifier CLASS is the same either way and
+	  only the legend differs, so this is the cheaper thing to get wrong.
+
+	  Cosmetic only. The wire carries modifier CLASSES, not key legends, and
+	  cannot distinguish left from right at all (dispscan_status.h, trap #4),
+	  so this changes what you see and nothing about what is decoded.
 
 # --- Development scaffold ----------------------------------------------------
 # Drives the status screen from a synthetic status struct so the render path can

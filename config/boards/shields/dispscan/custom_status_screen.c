@@ -29,6 +29,10 @@
  * derivable, and completely flat: every field had the same weight, so nothing
  * could be read at a glance from across a desk.
  *
+ * It also used to carry a WPM readout and the keyboard id. Both were removed;
+ * the id's removal takes a ratified procedure with it, and where that went is
+ * recorded in the band D block below rather than left to be rediscovered.
+ *
  * It now draws vendored 1bpp glyphs (USB / Bluetooth marks, connection state
  * dots, modifier keycaps) and Pixel Operator Mono for the fields that matter,
  * with the batteries as actual drawn gauges. Provenance, licences and the
@@ -81,9 +85,21 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define PANEL_W 160
 #define PANEL_H 68
 
-/* Left/right text inset. 2 px keeps the panel edge from eating a glyph column
- * while still leaving 156 px = 19 usable characters per line. */
-#define MARGIN 2
+/* -------------------------------------------------------------------------
+ * SAFE AREA -- a uniform inset on all four sides, not just the sides.
+ *
+ * The horizontal inset used to be 2 px and there was no vertical one at all:
+ * band A started at y=0 and the last band ended 5 px from the bottom, so
+ * content sat hard against the top edge and the whole composition read as
+ * top-weighted. On a panel behind any kind of bezel or case lip, a glyph
+ * column or scanline that close to the edge is also the first thing to be
+ * cropped.
+ *
+ * 4 px on every side, and every band position below is derived from it. 160 -
+ * 2*4 = 152 px = 19 usable characters per line; 68 - 2*4 = 60 px of usable
+ * height against 52 px of content, which is what the inter-band gaps spend.
+ * ------------------------------------------------------------------------- */
+#define MARGIN 4
 
 /*
  * BAND LAYOUT -- this bounds invalidation HEIGHT. It is not what keeps
@@ -104,24 +120,29 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * SPI. Giving each independently-changing field its own y band bounds a
  * single-field update to that band instead of all 68 rows.
  *
- *   y=0   band A  h=14  endpoint icons (left) | layer name+number (right)
- *   y=18  band B  h=13  left battery gauge    | right battery gauge
- *   y=35  band C  h=16  modifier keycaps      | STALE | CAPS
- *   y=54  band D  h=9   WPM                   | RSSI, or keyboard id
+ *   y=4   band A  h=14  endpoint icons (left) | layer name+number (right)
+ *   y=21  band B  h=13  left battery gauge    | right battery gauge
+ *   y=37  band C  h=16  modifier keycaps      | STALE | CAPS
+ *   y=55  band D  h=9   (empty)               | RSSI
  *
  * Band A is 14 rather than 13 because the USB/BT marks are 14 px tall and the
  * font is 13; the band is sized by its tallest occupant. Band C is 16: a 14 px
- * keycap plus a 1 px gap plus the 1 px active-underline beneath it. Last band
- * ends at 54+9 = 63 <= 68.
+ * keycap plus a 1 px gap plus the 1 px active-underline beneath it.
+ *
+ * VERTICAL BUDGET, so the spacing is checked rather than eyeballed:
+ *   4 top margin + 14 + 3 + 13 + 3 + 16 + 2 + 9 + 4 bottom margin = 68 exactly.
+ * The last band ends at 55+9 = 64, leaving the same 4 px at the bottom as at
+ * the top. The gaps taper (3, 3, 2) because band C's underline row already
+ * reads as a separator and a full gap under it would look like a hole.
  *
  * Bands hold more than one field where those fields tend to change together
  * (both batteries; the two shift-ish markers) -- splitting them would buy no
  * invalidation and cost vertical space, which is the scarce axis here.
  */
-#define BAND_A_Y 0
-#define BAND_B_Y 18
-#define BAND_C_Y 35
-#define BAND_D_Y 54
+#define BAND_A_Y (MARGIN)      /* 4 */
+#define BAND_B_Y (MARGIN + 17) /* 21 */
+#define BAND_C_Y (MARGIN + 33) /* 37 */
+#define BAND_D_Y (MARGIN + 51) /* 55 */
 
 /* -------------------------------------------------------------------------
  * Band A -- endpoint cluster, left.
@@ -130,21 +151,22 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * the Bluetooth mark with its profile digit and state dot. Marks are 9x14,
  * state dots 5x5, the digit is one 8 px character.
  *
- *   x=2    USB mark        9 wide -> 2..11
- *   x=12   USB state dot   5 wide -> 12..17, bottom-aligned (y = +9)
- *   x=22   BT mark         9 wide -> 22..31
- *   x=32   BT profile digit 8 wide -> 32..40
- *   x=41   BT state dot    5 wide -> 41..46, bottom-aligned
+ *   x=4    USB mark        9 wide -> 4..12
+ *   x=14   USB state dot   5 wide -> 14..18, bottom-aligned (y = +9)
+ *   x=24   BT mark         9 wide -> 24..32
+ *   x=34   BT profile digit 8 wide -> 34..41
+ *   x=43   BT state dot    5 wide -> 43..47, bottom-aligned
  *
- * Cluster ends at x=46. The layer label is right-aligned and its worst case
- * ("L255 ABCD", 9 chars = 72 px) starts at x=86, so there is a 40 px gap that
- * nothing can close -- which is also where the FAKE marker lives.
+ * Cluster ends at x=47. The layer label is right-aligned to the safe area and
+ * its worst case ("L255 ABCD", 9 chars = 72 px) therefore spans 84..155, so
+ * there is a 36 px gap that nothing can close -- which is also where the FAKE
+ * marker lives.
  * ------------------------------------------------------------------------- */
-#define EP_USB_X 2
-#define EP_USB_STATE_X 12
-#define EP_BT_X 22
-#define EP_BT_DIGIT_X 32
-#define EP_BT_STATE_X 41
+#define EP_USB_X (MARGIN)            /* 4 */
+#define EP_USB_STATE_X (MARGIN + 10) /* 14 */
+#define EP_BT_X (MARGIN + 20)        /* 24 */
+#define EP_BT_DIGIT_X (MARGIN + 30)  /* 34 */
+#define EP_BT_STATE_X (MARGIN + 39)  /* 43 */
 /* Marks are 14 tall, state dots 5: sit the dot on the mark's baseline. */
 #define EP_STATE_DY 9
 
@@ -154,24 +176,30 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * A drawn gauge instead of the old "[######..]" cell string. Same information,
  * a third of the width, and readable without counting anything.
  *
- *   x=2    "L"           1 char  ->  2..9
- *   x=12   gauge body    22 wide -> 12..33,  nub 34..35
- *   x=38   percentage    4 chars -> 38..69
- *   x=84   "R"                   -> 84..91
- *   x=94   gauge body            -> 94..115, nub 116..117
- *   x=120  percentage            -> 120..151
+ *   x=4    "L"           1 char  ->  4..11
+ *   x=14   gauge body    22 wide -> 14..35,  nub 36..37
+ *   x=41   percentage    4 chars -> 41..72
+ *   x=87   "R"                   -> 87..94
+ *   x=97   gauge body            -> 97..118, nub 119..120
+ *   x=124  percentage            -> 124..155
  *
- * Ends at 151, seven clear of the 158 margin. (Ranges are inclusive of both
- * ends, so an n-wide object at x spans x .. x+n-1.) The percentage field is 4 wide
- * because "255%" is representable -- see fmt_battery_text on why an impossible
- * reading is shown rather than clamped.
+ * THE TWO HALVES ARE MIRRORED, which is the alignment property worth stating:
+ * the left cluster spans 4..72 and the right 87..155, so each is 69 px wide and
+ * each is inset exactly MARGIN from its own side of the panel. The gutter
+ * between them (73..86) is centred on the panel midline. A reading is therefore
+ * always the same distance from the edge nearest it.
+ *
+ * (Ranges are inclusive of both ends, so an n-wide object at x spans
+ * x .. x+n-1.) The percentage field is 4 wide because "255%" is representable
+ * -- see fmt_battery_text on why an impossible reading is shown rather than
+ * clamped.
  * ------------------------------------------------------------------------- */
-#define BATT_L_SIDE_X 2
-#define BATT_L_GAUGE_X 12
-#define BATT_L_TEXT_X 38
-#define BATT_R_SIDE_X 84
-#define BATT_R_GAUGE_X 94
-#define BATT_R_TEXT_X 120
+#define BATT_L_SIDE_X (MARGIN)       /* 4 */
+#define BATT_L_GAUGE_X (MARGIN + 10) /* 14 */
+#define BATT_L_TEXT_X (MARGIN + 37)  /* 41 */
+#define BATT_R_SIDE_X (MARGIN + 83)  /* 87 */
+#define BATT_R_GAUGE_X (MARGIN + 93) /* 97 */
+#define BATT_R_TEXT_X (MARGIN + 120) /* 124 */
 
 #define GAUGE_W 22
 #define GAUGE_H 11
@@ -193,7 +221,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * Four 14x14 keycaps on an 18 px pitch, one per modifier CLASS (left/right are
  * not on the wire -- dispscan_status.h, trap #4):
  *
- *   x=2, 20, 38, 56  ->  CTRL, SHIFT, ALT, GUI, last ends at 70
+ *   x=4, 22, 40, 58  ->  CTRL, SHIFT, ALT, GUI, last ends at 71
  *
  * ALWAYS VISIBLE, with a 1 px underline appearing beneath the held ones. This
  * is upstream's idiom and it preserves the property the old "MOD C.AG" string
@@ -202,16 +230,17 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * tension with the blank-unless-set rule applied to CAPS and STALE below --
  * those are rare, transient, whole-field events with no column of their own.
  *
- *   x=82   STALE  5 chars = 40 px -> 82..122
- *   right  CAPS   4 chars = 32 px -> 126..158
+ *   x=78   STALE  5 chars = 40 px -> 78..117
+ *   right  CAPS   4 chars = 32 px -> 124..155
  *
- * 12 px from the keycaps to STALE, 4 px from STALE to CAPS.
+ * Evenly gapped: 7 px from the keycaps to STALE, 7 px from STALE to CAPS, and
+ * CAPS lands on the safe-area edge like every other right-aligned field.
  * ------------------------------------------------------------------------- */
 #define MOD_COUNT 4
 #define MOD_ICON_W 14
 #define MOD_ICON_H 14
 #define MOD_PITCH 18
-#define MOD_FIRST_X 2
+#define MOD_FIRST_X (MARGIN) /* 4 */
 /* Underline sits 1 px under the keycap and is as wide as it. */
 #define MOD_UNDERLINE_DY (MOD_ICON_H + 1)
 #define MOD_UNDERLINE_H 1
@@ -219,39 +248,37 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* The markers use unscii_8 (9 px) inside a 16 px band; nudge them down so they
  * sit against the keycaps' optical centre rather than their top edge. */
 #define MARKER_DY 4
-#define STALE_MARKER_X 82
+#define STALE_MARKER_X (MARGIN + 74) /* 78 */
 #define STALE_MARKER_TEXT "STALE"
 
 /* -------------------------------------------------------------------------
- * Band D -- WPM, and one field whose identity is a build-time decision.
+ * Band D -- RSSI, right-aligned, and nothing else.
  *
- *   x=2    "WPM 255"      7 chars = 56 px -> 2..58
- *   right  see below
+ *   right  "-128dBm"  worst case, 7 chars = 56 px -> 99..155
  *
- * THE RIGHT-HAND SLOT. The keyboard id is an 11-character field ("ID C0FFEE12")
- * that matters exactly once, during setup: D8's binding procedure is "read the
- * hex digits off the screen, paste them into the shield .conf". Once the
- * allowlist is populated the id is a constant, and a constant occupying a fifth
- * of a 160x68 panel forever is a poor trade.
+ * WHAT USED TO BE HERE, AND WHY IT IS NOT:
  *
- * So the slot shows the id only in DISCOVERY MODE, and the RSSI otherwise.
- * CONFIG_DISPSCAN_SHOW_KEYBOARD_ID carries that decision; it is derived in
- * Kconfig from the allowlist being empty, which is the same condition
- * dispscan_observer.c calls discovery mode. It is a Kconfig symbol rather than
- * a test here because the natural spelling --
- * `sizeof(CONFIG_DISPSCAN_KEYBOARD_ID_ALLOWLIST) == 1` -- is NOT legal inside a
- * preprocessor #if (sizeof does not exist at that stage; the expression would
- * be evaluated with the unknown identifiers replaced by 0). Kconfig compares
- * strings natively and the result reaches C as a plain 0/1 macro.
+ *   WPM. Removed on request. The field is still decoded and still crosses the
+ *   seam (dispscan_status.h) -- it is simply not drawn. Nothing else changes:
+ *   the wire carries it whether or not this file reads it.
  *
- * Being a compile-time decision, the unused label is never even created.
+ *   THE KEYBOARD ID. Removed on request, and this one has a consequence worth
+ *   recording, because it silently breaks a ratified procedure if nobody
+ *   writes it down. D8's binding step was "read the 8 hex digits off the panel
+ *   and paste them into CONFIG_DISPSCAN_KEYBOARD_ID_ALLOWLIST". With the field
+ *   gone the panel can no longer tell you the id.
  *
- * RSSI was decoded but never drawn before this. It is the field that answers
- * "is this thing about to drop out", which on a passive observer is the
- * question the panel is otherwise silent about.
- *   "-128dBm" is the worst case, 7 chars = 56 px -> 102..158.
- *   "ID C0FFEE12"                  11 chars = 88 px -> 70..158.
- * Both clear the WPM field, which ends at 58.
+ *   THE REPLACEMENT IS THE SERIAL LOG, which already carried it and needed no
+ *   new code: dispscan_observer.c logs `bound to keyboard_id %08X` at LOG_INF
+ *   the moment it binds, and CONFIG_ZMK_USB_LOGGING is on. So binding is now
+ *   "plug the display into USB, watch the console, copy the id from there".
+ *   If USB logging is ever turned off (it is marked DEV ONLY in dispscan.conf)
+ *   this procedure loses its last route and the field has to come back.
+ *
+ * The band is otherwise empty. It is kept rather than reclaimed because the
+ * alternative -- pulling the other three bands down into the freed rows --
+ * would spread 43 px of content over 60 px of safe area, and the gaps would
+ * then be wider than the 13 px band heights they separate.
  * ------------------------------------------------------------------------- */
 
 /* -------------------------------------------------------------------------
@@ -318,7 +345,14 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  *
  * The wire carries modifier CLASSES, not key legends, so this is purely a
  * question of what the person reading the panel expects to see. Mirrors
- * upstream's ZMK_DONGLE_DISPLAY_MAC_MODIFIERS.
+ * upstream's ZMK_DONGLE_DISPLAY_MAC_MODIFIERS, and DEFAULTS TO THE MAC GLYPHS
+ * here (option and command) because that is what this keyboard is driven from.
+ *
+ * Note the keyboard itself already has conditional layers keyed on the host OS
+ * (config/charybdis.keymap on the keyboard branches), so a Windows session is
+ * not hypothetical -- but the modifier CLASS is identical either way, and only
+ * the legend differs. Flip CONFIG_DISPSCAN_MAC_MODIFIERS=n to get the Windows
+ * keycaps back.
  * ------------------------------------------------------------------------- */
 #if IS_ENABLED(CONFIG_DISPSCAN_MAC_MODIFIERS)
 #define MOD_ICON_ALT (&dispscan_opt_icon)
@@ -368,12 +402,7 @@ struct dispscan_ui {
     lv_obj_t *lbl_caps;
 
     /* Band D. */
-    lv_obj_t *lbl_wpm;
-#if IS_ENABLED(CONFIG_DISPSCAN_SHOW_KEYBOARD_ID)
-    lv_obj_t *lbl_kbid;
-#else
     lv_obj_t *lbl_rssi;
-#endif
 
     /* NO_SIGNAL composition. */
     lv_obj_t *lbl_nosig;
@@ -409,21 +438,27 @@ static bool peek_pending(struct dispscan_status *out);
  * indistinguishable from working hardware receiving real packets. Put it on the
  * glass.
  *
- * GEOMETRY. "FAKE" is 4 chars = 32 px in unscii_8. Right-aligned with a -78 px
- * offset, so its right edge is at 160-78 = 82 and it spans x=50..82 in band A.
- * Band A's occupants are the endpoint cluster (ends at x=46) and the
- * right-aligned layer label, whose worst case "L255 ABCD" starts at x=86. So
- * the marker sits in dead space with a 4 px gap either side, and nothing on the
- * panel moves.
+ * GEOMETRY. "FAKE" is 4 chars = 32 px in unscii_8, left-aligned at the safe
+ * margin in BAND D, spanning x=4..35. It lives there because band D's left half
+ * fell vacant when WPM was removed: it is the only genuinely empty space on the
+ * panel, so the marker needs no gap negotiated against anything and nothing
+ * moves to accommodate it. The RSSI it shares the band with is right-aligned
+ * and starts no earlier than x=99.
  *
- * Band A specifically because it is the only band the NO_SIGNAL text does not
- * reach: those two centred lines occupy roughly y=21..47, and band A is y=0..14.
+ * It used to sit in band A, squeezed between the endpoint cluster and the
+ * layer label. That gap is now 36 px against a 32 px marker -- it would still
+ * fit, with 2 px either side, but a 2 px clearance is the kind of margin that
+ * breaks the next time any band A field grows.
+ *
+ * Band D also clears the NO_SIGNAL text, which is what the old placement was
+ * really buying: those two centred lines occupy roughly y=20..46, and band D
+ * starts at y=55.
  *
  * DELIBERATELY NOT IN collect_awake_objs(). It must stay visible in DARK and
  * NO_SIGNAL too -- those are precisely the states that would otherwise look
  * like a real keyboard idling or out of range.
  */
-#define FAKE_MARKER_X (-78)
+#define FAKE_MARKER_X (MARGIN)
 #define FAKE_MARKER_TEXT "FAKE"
 #endif /* CONFIG_DISPSCAN_FAKE_SOURCE */
 
@@ -529,10 +564,9 @@ static size_t collect_awake_objs(lv_obj_t *objs[AWAKE_OBJ_COUNT]) {
         objs[n++] = ui.mod_underline[i];
     }
 
-    /* DELIBERATELY NOT HERE: lbl_stale, lbl_caps, lbl_wpm and band D's
-     * right-hand label. set_awake_hidden() handles those four separately
-     * because two of them are conditional even within AWAKE -- see the comment
-     * there. */
+    /* DELIBERATELY NOT HERE: lbl_stale, lbl_caps and lbl_rssi.
+     * set_awake_hidden() handles those three separately because two of them are
+     * conditional even within AWAKE -- see the comment there. */
     __ASSERT(n == AWAKE_OBJ_COUNT, "awake object count drifted");
     return n;
 }
@@ -545,22 +579,17 @@ static void set_awake_hidden(bool hidden) {
         set_hidden(objs[i], hidden);
     }
 
-    /* These four are in the AWAKE set on purpose but are not in the array: each
-     * has its own show/hide rule inside render_awake() (blank unless the
+    /* STALE and CAPS are in the AWAKE set on purpose but are not in the array:
+     * each has its own show/hide rule inside render_awake() (blank unless the
      * condition holds), so they are only ever FORCED hidden here, never forced
-     * visible. Showing them on the way back into AWAKE would resurrect a CAPS
-     * or STALE marker that may no longer apply; render_awake(force=true) sets
-     * them correctly a moment later. */
+     * visible. Showing them on the way back into AWAKE would resurrect a marker
+     * that may no longer apply; render_awake(force=true) sets them correctly a
+     * moment later. */
     if (hidden) {
         set_hidden(ui.lbl_stale, true);
         set_hidden(ui.lbl_caps, true);
     }
-    set_hidden(ui.lbl_wpm, hidden);
-#if IS_ENABLED(CONFIG_DISPSCAN_SHOW_KEYBOARD_ID)
-    set_hidden(ui.lbl_kbid, hidden);
-#else
     set_hidden(ui.lbl_rssi, hidden);
-#endif
 }
 
 /* -------------------------------------------------------------------------
@@ -932,12 +961,7 @@ lv_obj_t *zmk_display_status_screen() {
                              BAND_C_Y + MARKER_DY);
 
     /* Band D. */
-    ui.lbl_wpm = make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_LEFT, MARGIN, BAND_D_Y);
-#if IS_ENABLED(CONFIG_DISPSCAN_SHOW_KEYBOARD_ID)
-    ui.lbl_kbid = make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_RIGHT, -MARGIN, BAND_D_Y);
-#else
     ui.lbl_rssi = make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_RIGHT, -MARGIN, BAND_D_Y);
-#endif
 
     /*
      * NO_SIGNAL composition. Deliberately the OPPOSITE of DARK: DARK is an
@@ -946,7 +970,16 @@ lv_obj_t *zmk_display_status_screen() {
      * they mean very different things ("keyboard idle, data still good" vs
      * "keyboard gone, data meaningless").
      *
-     * "-- NO SIGNAL --" is 15 chars = 120 px, centred with 20 px either side.
+     * "-- NO SIGNAL --" is 15 chars = 120 px, centred with 20 px either side --
+     * comfortably inside the safe area, which is the widest single string on
+     * the panel and therefore the one that would clip first.
+     *
+     * The pair is centred on the PANEL, not on the safe area: LV_ALIGN_CENTER
+     * with a symmetric -8/+8 split puts the 13 px headline at y=20..32 and the
+     * 9 px subtitle at y=38..46, so the block's optical centre lands on the
+     * panel midline (34) with 20 px of field above and 21 below. Insetting it
+     * would move a centred block off centre for no gain -- MARGIN exists to
+     * keep content off the EDGES, and nothing here is near one.
      */
     ui.lbl_nosig = make_label(ui.screen, &dispscan_font_pixel_operator, LV_ALIGN_CENTER, 0, -8);
     set_text(ui.lbl_nosig, "-- NO SIGNAL --");
@@ -956,8 +989,8 @@ lv_obj_t *zmk_display_status_screen() {
 #ifdef CONFIG_DISPSCAN_FAKE_SOURCE
     /* See FAKE_MARKER_X above for the geometry derivation and for why this one
      * label is exempt from every hide/show path. */
-    ui.lbl_fake = make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_RIGHT, FAKE_MARKER_X,
-                             BAND_A_Y + MARKER_DY);
+    ui.lbl_fake = make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_LEFT, FAKE_MARKER_X,
+                             BAND_D_Y);
     set_text(ui.lbl_fake, FAKE_MARKER_TEXT);
 #endif
 
@@ -971,8 +1004,8 @@ lv_obj_t *zmk_display_status_screen() {
      */
     set_awake_hidden(true);
 
-    LOG_INF("dispscan: status screen built (%dx%d landscape, no rotation, %s mode)", PANEL_W,
-            PANEL_H, IS_ENABLED(CONFIG_DISPSCAN_SHOW_KEYBOARD_ID) ? "discovery" : "bound");
+    LOG_INF("dispscan: status screen built (%dx%d landscape, no rotation, %d px safe area)",
+            PANEL_W, PANEL_H, MARGIN);
 
     /*
      * REPLAY THE PRE-INIT UPDATE. dispscan_status.h promises that
@@ -1075,34 +1108,17 @@ static void render_awake(const struct dispscan_status *s, bool force) {
         set_hidden(ui.lbl_caps, !s->caps_word);
     }
 
-    if (force || s->wpm != ui.last.wpm) {
-        /* "WPM 255" = 7 chars = 56 px ending at x=58. */
-        snprintf(buf, sizeof(buf), "WPM %u", (unsigned int)s->wpm);
-        set_text(ui.lbl_wpm, buf);
-    }
+    /* NEITHER WPM NOR keyboard_id IS DRAWN. Both are still decoded and both
+     * still cross the seam; they were removed from the composition on request.
+     * The id's binding procedure moved to the serial log -- see the band D
+     * comment, which is where that consequence is written down. */
 
-#if IS_ENABLED(CONFIG_DISPSCAN_SHOW_KEYBOARD_ID)
-    if (force || s->keyboard_id != ui.last.keyboard_id) {
-        /*
-         * ALL 32 BITS. This is the D8 binding key, and the ratified setup
-         * procedure is "read the hex digits off the screen, paste them into the
-         * shield .conf". Rendering only the low 16 broke that silently: the user
-         * pastes a half-width value, the strict-equality allowlist never
-         * matches, and the panel says NO SIGNAL with nothing to debug.
-         *
-         * "ID C0FFEE12" is 11 chars = 88 px, right-aligned at x=70..158.
-         */
-        snprintf(buf, sizeof(buf), "ID %08X", (unsigned int)s->keyboard_id);
-        set_text(ui.lbl_kbid, buf);
-    }
-#else
     if (force || s->rssi != ui.last.rssi) {
-        /* "-128dBm" is the worst case, 7 chars = 56 px at x=102..158. A value of
+        /* "-128dBm" is the worst case, 7 chars = 56 px at x=99..155. A value of
          * 0 means "no radio produced this" (the fake source), not 0 dBm. */
         snprintf(buf, sizeof(buf), "%ddBm", (int)s->rssi);
         set_text(ui.lbl_rssi, buf);
     }
-#endif
 }
 
 static void render(const struct dispscan_status *s) {
