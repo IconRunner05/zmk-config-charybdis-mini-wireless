@@ -70,7 +70,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * 120` never reaches 3-digit-plus territory. So the layout's RISKIEST branches
  * -- the ones this whole slice exists to de-risk on glass -- were precisely the
  * ones never emitted: "L255 ABCD" (the widest layer string), the battery
- * out-of-range rendering, fmt_link()'s "BT?" fallback, "WPM 255", and the
+ * out-of-range rendering, the '?' profile-digit fallback, "WPM 255", and the
  * non-ASCII layer-name substitution.
  *
  * Two ticks per cycle are therefore given over to those extremes. They are
@@ -105,9 +105,9 @@ static const char wire_layer_name_widest[DISPSCAN_LAYER_NAME_WIRE_LEN] = {'A', '
  * called "Nav" + an arrow: the lead byte survives, its two continuation bytes
  * are truncated away. 0x01 stands in for an outright control byte.
  *
- * unscii_8 covers 0x20..0x7E only, so an unsanitised renderer would draw
- * missing-glyph boxes (or nothing) here and the width arithmetic would be
- * wrong. The panel should show "L200 Na??".
+ * Both faces on this screen cover 0x20..0x7E only, so an unsanitised renderer
+ * would draw missing-glyph boxes (or nothing) here and the width arithmetic
+ * would be wrong. The panel should show "L200 Na??".
  */
 static const char wire_layer_name_nonascii[DISPSCAN_LAYER_NAME_WIRE_LEN] = {'N', 'a', (char)0xE2,
                                                                            (char)0x01};
@@ -154,8 +154,10 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
      */
     s->freshness = ((a % 4) == 3) ? DISPSCAN_FRESH_IDLE : DISPSCAN_FRESH_LIVE;
 
-    /* Plausible desk-range RSSI, swept so the field is visibly populated in a
-     * log even though nothing draws it. -40 dBm to -95 dBm. */
+    /* Plausible desk-range RSSI, -40 dBm to -95 dBm. This IS drawn now, in band
+     * D's right-hand slot, whenever the allowlist is non-empty -- so on a
+     * discovery-mode build (the default) the sweep is still only visible in the
+     * log, and on a bound build it is on the glass. */
     s->rssi = (int8_t)(-40 - (int)(a % 56));
 
     /*
@@ -179,7 +181,7 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
     s->profile_slot = (uint8_t)(a % 5);
 
     /* All 16 combinations of the four modifier classes over 16 ticks, so every
-     * column of "MOD C.AG" is proven to light independently. */
+     * modifier keycap is proven to gain and lose its underline independently. */
     s->modifiers = (uint8_t)(a % 16);
 
     /* Toggles every other tick — slow enough to see, fast enough to catch. */
@@ -189,12 +191,27 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
      * values. Coprime-ish stride so consecutive ticks differ visibly. */
     s->wpm = (uint8_t)((a * 17) % 120);
 
-    /* Endpoint mix: cycles USB-HID, BLE-bonded, BLE-unbonded and nothing, which
-     * is exactly the four glyphs fmt_link() can emit. */
-    s->usb_connected = true;
+    /*
+     * Endpoint mix. The two transports now have INDEPENDENT state dots (ok /
+     * nok / open), so they get independent sweeps -- the old single sweep could
+     * only ever show one transport doing something at a time, which is not a
+     * state the real keyboard is restricted to.
+     *
+     * USB on a period of 4 and BLE on a period of 16, both of which divide the
+     * 32-step AWAKE run, so all nine combinations appear and the sequence stays
+     * periodic across the cycle:
+     *   usb  0 -> ok (HID ready)   1 -> nok (cable, not ready)   2,3 -> open
+     *   ble  0 -> ok (bonded)      1 -> nok (Just Works)         2,3 -> open
+     *
+     * `usb_connected` is swept rather than pinned true: it was pinned before,
+     * which meant the "no cable" case never reached the panel at all. It is
+     * also the field the old rendering could not express -- a cable that is
+     * plugged in but not yet carrying HID used to look exactly like no cable.
+     */
     s->usb_hid_ready = (a % 4) == 0;
-    s->ble_connected = (a % 4) == 1 || (a % 4) == 2;
-    s->ble_bonded = (a % 4) == 1;
+    s->usb_connected = (a % 4) <= 1;
+    s->ble_bonded = ((a / 4) % 4) == 0;
+    s->ble_connected = ((a / 4) % 4) <= 1;
 
     /* Fixed, because the real one is a fixed hash of the keyboard's hardware ID
      * and D8 binds on it. A changing value here would hide a rendering bug in
@@ -215,9 +232,10 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
         /* Every numeric field at or past its documented limit at once.
          *   layer 255 + a 4-char name -> "L255 ABCD", the 9-char worst case
          *   battery 255 / 101         -> the out-of-range rendering, both sides
-         *   profile 7                 -> above DISPSCAN_PROFILE_MAX, so "BT?"
+         *                                (no gauge drawn, real value in text)
+         *   profile 7                 -> above DISPSCAN_PROFILE_MAX, so '?'
          *   wpm 255                   -> "WPM 255", the 7-char worst case
-         *   all modifiers + caps      -> every column of "MOD CSAG" lit, "CAPS"
+         *   all modifiers + caps      -> all four underlines lit, plus "CAPS"
          * If any of these clips or overlaps, it is visible on this one frame. */
         s->active_layer = 255;
         memcpy(s->layer_name, wire_layer_name_widest, DISPSCAN_LAYER_NAME_WIRE_LEN);
@@ -229,7 +247,9 @@ static void fake_fill(struct dispscan_status *s, uint32_t n) {
         s->modifiers = DISPSCAN_MOD_CTRL | DISPSCAN_MOD_SHIFT | DISPSCAN_MOD_ALT |
                        DISPSCAN_MOD_GUI;
         s->caps_word = true;
-        /* Nothing connected, so fmt_link() emits '-' alongside the "BT?". */
+        /* Nothing attached on either transport, so both state dots show `open`
+         * alongside the '?' profile digit. */
+        s->usb_connected = false;
         s->usb_hid_ready = false;
         s->ble_connected = false;
         s->ble_bonded = false;

@@ -145,6 +145,38 @@ config DISPSCAN_DISCOVERY_RSSI_MARGIN_DB
 	  comparison, so two similarly-placed keyboards do not trade the display
 	  back and forth on measurement noise.
 
+# --- Presentation ------------------------------------------------------------
+# Band D's right-hand slot is one field with two possible identities, and this
+# symbol is which. The keyboard id is an 11-character field that matters exactly
+# once -- during binding, when the procedure is "read the hex digits off the
+# panel and paste them into the allowlist above". After that it is a constant
+# occupying a fifth of a 160x68 screen forever, so the slot switches to the
+# packet RSSI, which answers the live question ("is this about to drop out")
+# that the panel is otherwise silent about.
+#
+# DERIVED, NOT CHOSEN: it follows the allowlist being empty, i.e. exactly the
+# condition dispscan_observer.c calls discovery mode. Deliberately a Kconfig
+# symbol rather than a test in the C: the natural spelling there
+# (`sizeof(CONFIG_..._ALLOWLIST) == 1`) is not legal in a preprocessor #if,
+# and Kconfig compares strings natively. It also makes the coupling visible in
+# menuconfig instead of buried in a header.
+#
+# No prompt -- overriding it independently of the allowlist would produce a
+# display showing an id it is not binding on, or binding on an id it will not
+# show. Neither is a state worth being able to reach.
+config DISPSCAN_SHOW_KEYBOARD_ID
+	bool
+	default y if DISPSCAN_KEYBOARD_ID_ALLOWLIST = ""
+config DISPSCAN_MAC_MODIFIERS
+	bool "Draw Mac modifier keycaps instead of Windows ones"
+	help
+	  Picks which vendored glyph stands for the GUI and ALT classes: the
+	  command and option keycaps when y, the Windows and Alt keycaps when n.
+
+	  Cosmetic only. The wire carries modifier CLASSES, not key legends, and
+	  cannot distinguish left from right at all (dispscan_status.h, trap #4),
+	  so this changes what you see and nothing about what is decoded.
+
 # --- Liveness / activity timing ----------------------------------------------
 # Defaults from docs/remote-display-plan.md, D8 "Three liveness states".
 config DISPSCAN_LIVE_MS
