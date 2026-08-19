@@ -1,0 +1,34 @@
+# Registers THIS zmk-config repository as a Zephyr module.
+#
+# Why this file exists (D7 — extractability):
+# ------------------------------------------------------------------
+# The broadcaster needs exactly two things from the build: a Kconfig file that
+# gets sourced, and a CMakeLists.txt that gets add_subdirectory()'d. Every other
+# way of getting those into a zmk-config repo requires editing a file that
+# already exists and is shared with the keyboard proper:
+#
+#   * `build.yaml` cmake-args (-DZMK_EXTRA_MODULES=...) — shared, and needs an
+#     absolute path that differs between CI and a local build.
+#   * a CMakeLists.txt line inside config/boards/shields/charybdis/ — that is the
+#     live shield directory; a reviewer would have to diff it. It would not work
+#     anyway: Zephyr only uses SHIELD_DIRS as a DTS_ROOT, it never
+#     add_subdirectory()s a shield directory (zephyr/cmake/modules/shields.cmake
+#     and pre_dt.cmake).
+#
+# `west list` reports the manifest ("self") project, and zephyr_module.py treats
+# every west project carrying zephyr/module.yml as a module
+# (zephyr/scripts/zephyr_module.py: parse_modules() takes
+# `[p.posixpath for p in west_projs['projects']]`, and west's
+# Manifest.get_projects([]) returns the self project as projects[0]).
+#
+# So this one NEW file is the entire hook. Deleting config/zephyr/ and
+# config/status_adv/ removes the broadcaster from the build completely, with no
+# edit to any pre-existing file.
+#
+# NOTE: no `settings:` key. Deliberately — declaring board_root/dts_root here
+# would change how the keyboard's own shields and bindings are discovered, which
+# is exactly the shared-path blast radius D7 forbids.
+name: charybdis-status-adv
+build:
+  cmake: status_adv
+  kconfig: status_adv/Kconfig
