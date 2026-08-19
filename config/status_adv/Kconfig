@@ -1,0 +1,151 @@
+# Charybdis status advertisement — keyboard-side broadcaster for the remote
+# display (docs/remote-display-plan.md on branch display/scanner, F1 ruling B2).
+#
+# SPDX-License-Identifier: MIT
+#
+# D7: ONE symbol, default n. With CHARYBDIS_STATUS_ADV=n nothing in
+# config/status_adv/ is compiled, no symbol is selected, and no ZMK or Zephyr
+# default is altered. The only trace left in the build is that `config` is a
+# Zephyr module whose CMakeLists.txt evaluates to nothing.
+
+menuconfig CHARYBDIS_STATUS_ADV
+	bool "Broadcast keyboard status in a BLE advertisement"
+	default n
+	depends on BT
+	depends on ZMK_BLE
+	# Split PERIPHERALS must never advertise. The peripheral half has no host
+	# profile, no keymap layer state of its own to report, and its radio is the
+	# one that has to answer the central's LL_CONNECT_REQ inside the 150 us
+	# T_IFS window. Gating in Kconfig (not just at runtime) means the code is
+	# not even linked into the left-half image.
+	depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+	select HWINFO
+	# The peripheral's battery level AND the split-link up/down signal both
+	# arrive on the zmk_peripheral_battery_state_changed event, which ZMK only
+	# raises when this is on. See the split cold-boot hold-off in status_adv.c.
+	select ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING if ZMK_SPLIT_ROLE_CENTRAL
+	help
+	  Emit a 26-byte manufacturer-data advertisement carrying layer, battery,
+	  profile and modifier state, for a passive BLE display to render.
+
+	  This adds an advertiser to the split CENTRAL — the half that also owns
+	  the host link and the trackball. Read D7/D9 in the plan document before
+	  turning it on. Default n so that the shipped keyboard is unchanged.
+
+if CHARYBDIS_STATUS_ADV
+
+config CHARYBDIS_STATUS_ADV_PIGGYBACK
+	bool "Also inject the payload into ZMK's own advertisement"
+	default n
+	help
+	  While ZMK is advertising for pairing (i.e. while the keyboard is NOT
+	  connected to its active profile) we must not contend for the single
+	  advertising set. Mode 1 instead calls bt_le_adv_update_data() and rides
+	  ZMK's existing connectable advertisement, putting our payload in its
+	  SCAN RESPONSE. It starts and stops nothing.
+
+	  DEFAULT n, AND THE REASON IS NOT CAUTION — IT IS THAT IT DOES NOT WORK
+	  WITH OUR SCANNER TODAY:
+
+	    A scan response is only ever transmitted in reply to a SCAN_REQ, and
+	    a PASSIVE scanner never sends one. Our display is passive by explicit
+	    design — dispscan_observer.c on branch display/scanner sets
+	    `.type = BT_LE_SCAN_TYPE_PASSIVE`. So the payload would be emitted
+	    and never received.
+
+	    It cannot be moved into the AD instead: the AD already carries the
+	    appearance, flags, HID/battery UUIDs and the forced device name
+	    (~27 of 31 bytes), and our element needs 28 on its own.
+
+	  So turning this on today costs a rewrite of the keyboard's pairing
+	  advertisement for zero display benefit. Enable it ONLY together with
+	  switching the scanner to BT_LE_SCAN_TYPE_ACTIVE (a one-line change on
+	  the display/scanner branch; the display is USB-powered, so the SCAN_REQ
+	  transmissions are affordable there).
+
+	  When it is on, note the coupling it creates: bt_le_adv_update_data()
+	  sets AD and scan response together, so status_adv.c must hand back a
+	  byte-for-byte mirror of ZMK's zmk_ble_ad[]. If that mirror ever drifts
+	  from zmk/app/src/ble.c, the keyboard's discoverability changes silently.
+
+	  With this off, the display simply freezes while the keyboard is
+	  unpaired or disconnected, and updates normally while it is in use —
+	  which is the case the plan document cares about (it rejected
+	  piggyback-ONLY, option B3, for freezing exactly while in use).
+
+config CHARYBDIS_STATUS_ADV_ACTIVE_MS
+	int "Advertising period while the keyboard is active (ms)"
+	default 1000
+	range 200 60000
+	help
+	  D9: 1 Hz is the knee of the power curve — roughly 19 uA at the +8 dBm
+	  this keyboard uses, about 2-5% of a typical split-central baseline.
+	  200 ms costs ~95 uA and buys 0.8 s of latency. Do not go faster.
+
+config CHARYBDIS_STATUS_ADV_IDLE_MS
+	int "Advertising period while the keyboard is idle (ms)"
+	default 30000
+	range 1000 600000
+	help
+	  ~0.3 uA. Effectively free. An idle->active transition pulls the next
+	  emission in immediately, so this does not cost 30 s of display latency.
+
+config CHARYBDIS_STATUS_ADV_BURST_MS
+	int "How long our own advertiser is left running per period (ms)"
+	default 50
+	range 20 1000
+	help
+	  We do NOT hold the legacy advertising set continuously. Every period we
+	  start it, let one advertising event go out, and stop it again.
+
+	  Two reasons, both load-bearing:
+
+	  1. CONTENTION. There is exactly one legacy advertising set. If we hold
+	     it when ZMK's update_advertising() wants it, bt_le_adv_start() returns
+	     -EALREADY and ZMK HAS NO RETRY PATH (verified in zmk v0.2.1
+	     app/src/ble.c) — the keyboard silently stops being pairable. Holding
+	     it 5% of the time instead of 100% cuts that exposure by 20x.
+	  2. SPLIT T_IFS. An advertiser transmitting while the central is trying
+	     to place an LL_CONNECT_REQ can preempt the 150 us response window.
+	     Short bursts bound how much of the second we are transmitting in.
+
+	  At the 30-60 ms advertising interval we request, 50 ms yields about one
+	  advertising event, so raising this raises BOTH radio cost and contention.
+
+config CHARYBDIS_STATUS_ADV_SPLIT_GRACE_MS
+	int "Stay silent this long after the split link is lost (ms)"
+	default 60000
+	range 0 600000
+	help
+	  Upstream documented that one extra legacy advertiser can starve the
+	  split central's LL_CONNECT_REQ at cold boot. We therefore emit nothing
+	  at all while the split peripheral is missing — but only for this long,
+	  so that a keyboard with a genuinely dead left half still reports its own
+	  battery to the display instead of going permanently dark.
+
+	  0 disables the hold-off entirely (not recommended on a split).
+
+config CHARYBDIS_STATUS_ADV_INITIAL_DELAY_MS
+	int "Delay before the first emission after boot (ms)"
+	default 5000
+	range 1000 120000
+	help
+	  Keeps us off the air through BT enable, settings load, host reconnect
+	  and the first split connection attempt. Also guarantees that our
+	  bt_conn_cb is registered after ZMK's — see the LIFO note in status_adv.c.
+
+config CHARYBDIS_STATUS_ADV_CHANNEL
+	int "Channel byte placed at wire offset 25"
+	default 0
+	range 0 255
+	help
+	  Carried for wire-format compatibility only. Our scanner deliberately
+	  ignores it and binds on keyboard_id instead (plan doc, D8: upstream's
+	  channel matcher treats 0 and >=10 as wildcards, so it is not an
+	  identity). Leave at 0.
+
+module = CHARYBDIS_STATUS_ADV
+module-str = charybdis_status_adv
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # CHARYBDIS_STATUS_ADV

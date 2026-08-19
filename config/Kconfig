@@ -41,3 +41,8 @@ config CHARYBDIS_HANG_CAPTURE_FEED_MS
 	help
 	  How often the heartbeat thread feeds the watchdog. Must be well under
 	  the timeout (default 4s feed vs 20s timeout = 5x margin).
+
+# Status advertisement broadcaster options (config/status_adv/). rsource so the
+# path resolves relative to this file; the menuconfig symbol defaults n and only
+# the central (right) half links the code (guarded in status_adv.c).
+rsource "status_adv/Kconfig"
