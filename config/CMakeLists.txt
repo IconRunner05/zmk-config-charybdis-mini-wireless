@@ -32,3 +32,10 @@ if(NOT CHARYBDIS_GIT_DESC)
 endif()
 message(STATUS "charybdis build_stamp: git=${CHARYBDIS_GIT_DESC}")
 zephyr_library_compile_definitions(CHARYBDIS_GIT_DESC="${CHARYBDIS_GIT_DESC}")
+
+# --- Status advertisement broadcaster (config/status_adv/) -------------------
+# Nested under this same module (config/zephyr/module.yml -> charybdis_buildstamp)
+# rather than a second module.yml, since a zmk-config "self" project carries
+# exactly one. add_subdirectory is unconditional; status_adv/CMakeLists.txt
+# self-gates on CONFIG_CHARYBDIS_STATUS_ADV and links nothing when it is n.
+add_subdirectory(status_adv)

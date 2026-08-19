@@ -71,3 +71,8 @@ config CHARYBDIS_TELEMETRY
 
 	  DIAGNOSTIC BUILD ONLY. Default n; enabled on the charybdis_right_telem
 	  build.yaml entry and the `make telem` target.
+
+# Status advertisement broadcaster options (config/status_adv/). rsource so the
+# path resolves relative to this file; the menuconfig symbol defaults n and only
+# the central (right) half links the code (guarded in status_adv.c).
+rsource "status_adv/Kconfig"
