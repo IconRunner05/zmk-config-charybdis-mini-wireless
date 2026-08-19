@@ -67,6 +67,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/display.h>
 #include <zmk/display/status_screen.h>
 
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && !IS_ENABLED(CONFIG_DISPSCAN_FAKE_SOURCE)
+#include <zmk/battery.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/battery_state_changed.h>
+#endif
+
 #include "dispscan_status.h"
 #include "vendor/dispscan_assets.h"
 
@@ -281,6 +287,18 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * then be wider than the 13 px band heights they separate.
  * ------------------------------------------------------------------------- */
 
+/*
+ * Band D left -- THIS DISPLAY'S OWN battery, from the XIAO's vbatt divider
+ * (zmk,battery). Always visible, including NO_SIGNAL and DARK (deliberately
+ * NOT in collect_awake_objs), because the display's own charge is exactly what
+ * you want to read when the keyboard link is gone. unscii_8: "DISP 100%" = 9
+ * chars = 72 px at x=4..76; the right-aligned RSSI worst case (-128dBm) starts
+ * at x=99, so 23 px clear. Compiled only when battery reporting is on and this
+ * is not a fake-source build -- band D left is the FAKE marker's slot, and a
+ * synthetic build has no real cell to report. Listener at the end of the file.
+ */
+#define LOCAL_BATT_X (MARGIN)
+
 /* -------------------------------------------------------------------------
  * Glyph coverage
  *
@@ -403,6 +421,10 @@ struct dispscan_ui {
 
     /* Band D. */
     lv_obj_t *lbl_rssi;
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && !IS_ENABLED(CONFIG_DISPSCAN_FAKE_SOURCE)
+    /* This display's own battery %, band D left. Always visible (LOCAL_BATT_X). */
+    lv_obj_t *lbl_local_batt;
+#endif
 
     /* NO_SIGNAL composition. */
     lv_obj_t *lbl_nosig;
@@ -641,6 +663,17 @@ static void fmt_battery_text(char *out, size_t out_len, uint8_t pct) {
         snprintf(out, out_len, "%3u%%", (unsigned int)pct);
     }
 }
+
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && !IS_ENABLED(CONFIG_DISPSCAN_FAKE_SOURCE)
+/*
+ * This display's OWN battery, as text: "DISP 100%". Unlike the keyboard
+ * gauges, 0 is a real reading here (a freshly-booted or genuinely flat cell),
+ * not the wire contract's N/A -- so it is shown as "DISP 0%", not laundered.
+ */
+static void fmt_local_batt(char *out, size_t out_len, uint8_t soc) {
+    snprintf(out, out_len, "DISP %u%%", (unsigned int)soc);
+}
+#endif
 
 /*
  * The battery reading, as pixels. See the three cases in fmt_battery_text().
@@ -962,6 +995,19 @@ lv_obj_t *zmk_display_status_screen() {
 
     /* Band D. */
     ui.lbl_rssi = make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_RIGHT, -MARGIN, BAND_D_Y);
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && !IS_ENABLED(CONFIG_DISPSCAN_FAKE_SOURCE)
+    /* This display's own battery, band D left. Seeded with the current reading
+     * (battery.c samples at boot); the listener at the end of the file refreshes
+     * it on every change, independently of the keyboard beacon. Not added to
+     * collect_awake_objs(), so it stays lit through DARK and NO_SIGNAL. */
+    ui.lbl_local_batt =
+        make_label(ui.screen, &lv_font_unscii_8, LV_ALIGN_TOP_LEFT, LOCAL_BATT_X, BAND_D_Y);
+    {
+        char lbuf[16];
+        fmt_local_batt(lbuf, sizeof(lbuf), zmk_battery_state_of_charge());
+        set_text(ui.lbl_local_batt, lbuf);
+    }
+#endif
 
     /*
      * NO_SIGNAL composition. Deliberately the OPPOSITE of DARK: DARK is an
@@ -1270,3 +1316,52 @@ void dispscan_status_update(const struct dispscan_status *s) {
 
     k_work_submit_to_queue(zmk_display_work_q(), &dispscan_update_work);
 }
+
+#if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING) && !IS_ENABLED(CONFIG_DISPSCAN_FAKE_SOURCE)
+/* -------------------------------------------------------------------------
+ * This display's own battery
+ *
+ * ZMK's battery.c samples the XIAO vbatt divider and raises
+ * zmk_battery_state_changed on every SoC change (idle is pinned ACTIVE in
+ * dispscan.conf, so the sample timer never stops). The event fires on ZMK's
+ * event thread, NOT the display work queue, so -- exactly like the packet path
+ * above -- the LVGL mutation is marshalled onto zmk_display_work_q(); LVGL is
+ * single-threaded and touching a label from the event thread would race the
+ * renderer. The SoC is stashed in a static the work item reads, so nothing has
+ * to travel with the work item.
+ * ------------------------------------------------------------------------- */
+static uint8_t local_batt_soc;
+
+static void local_batt_work_cb(struct k_work *work) {
+    char buf[16];
+
+    if (!ui.built) {
+        return;
+    }
+    fmt_local_batt(buf, sizeof(buf), local_batt_soc);
+    set_text(ui.lbl_local_batt, buf);
+}
+
+K_WORK_DEFINE(dispscan_local_batt_work, local_batt_work_cb);
+
+static int local_batt_listener(const zmk_event_t *eh) {
+    const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
+
+    if (ev == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    local_batt_soc = ev->state_of_charge;
+
+    /* Same guard as dispscan_status_update(): before the display work queue
+     * exists, submitting would queue onto a thread that is not running. The
+     * value is not lost -- the build seeds the label from
+     * zmk_battery_state_of_charge(), which battery.c has already updated. */
+    if (zmk_display_is_initialized()) {
+        k_work_submit_to_queue(zmk_display_work_q(), &dispscan_local_batt_work);
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(dispscan_local_batt, local_batt_listener);
+ZMK_SUBSCRIPTION(dispscan_local_batt, zmk_battery_state_changed);
+#endif
