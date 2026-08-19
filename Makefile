@@ -109,7 +109,8 @@ endef
 # Targets
 # =============================================================================
 
-.PHONY: help init update build left right reset pristine clean firmware
+.PHONY: help init update build left right reset pristine clean firmware \
+        dispscan dispscan-init dispscan-fake
 
 help: ## Show this help
 	@echo ""
@@ -234,6 +235,131 @@ reset: ## Build settings_reset flasher (RESET_UF2, see keyboard.mk)
 	@cp "$(FIRMWARE_STAGE)/$(RESET_UF2)" \
 		"$(FIRMWARE_DIR)/$(RESET_UF2)"
 	@echo "✓ Reset → $(FIRMWARE_DIR)/$(RESET_UF2)"
+	@echo ""
+
+# ─── Remote status display ────────────────────────────────────────────────────
+#
+# THIS BRANCH'S ACTUAL PRODUCT. The keyboard targets above are inherited from
+# master and are kept only so the file is not surprising; nothing on this branch
+# changes them, and build.yaml deliberately does not build them in CI.
+#
+# A SEPARATE WEST WORKSPACE, AND WHY IT IS NOT OPTIONAL. config/west.yml on this
+# branch pins ZMK `main`; the keyboard branches pin v0.2.1. A west workspace
+# holds exactly one checkout of ZMK, so running `make init`/`make update` here
+# against the shared `zmk-workspace` volume would silently roll the keyboard's
+# ZMK to main -- the next `make right` would then build the daily driver against
+# an unintended tree. Hence DISPSCAN_VOL and its own sentinel: the two lines
+# cannot collide no matter which order they are built in.
+#
+# First run needs `make dispscan-init` (a fresh ~1-2 GB west update into the new
+# volume). After that, `make dispscan`.
+DISPSCAN_BOARD  := xiao_ble/nrf52840/zmk
+DISPSCAN_SHIELD := dispscan nice_view
+DISPSCAN_UF2    := dispscan-xiao_ble-zmk.uf2
+
+# UI-validation image: CONFIG_DISPSCAN_OBSERVER=n, which makes
+# CONFIG_DISPSCAN_FAKE_SOURCE default y (they are mutually exclusive in
+# Kconfig). Drives the panel from a synthetic status struct, so every widget,
+# every value extreme and all three display states are exercised on one flash
+# with no keyboard broadcasting -- and the screen carries a "FAKE" marker in
+# every state so the device can never be mistaken for one showing real data.
+# Distinct filename because both images are flashable and confusing them would
+# be easy.
+DISPSCAN_FAKE_UF2 := dispscan-FAKE-xiao_ble-zmk.uf2
+
+DISPSCAN_VOL      := zmk-workspace-dispscan
+DISPSCAN_STAGE    := $(HOME)/Docker/zmk-config-dispscan
+DISPSCAN_SENTINEL := $(HOME)/Docker/.zmk-dispscan-initialized
+
+DISPSCAN_WEST = docker run --rm \
+	-v "$(DISPSCAN_VOL):/workspace" \
+	-v "$(DISPSCAN_STAGE):/workspace/config" \
+	-e HOME=/workspace \
+	-w /workspace \
+	$(ZMK_IMAGE)
+
+DISPSCAN_BUILD = docker run --rm \
+	-v "$(DISPSCAN_VOL):/workspace" \
+	-v "$(DISPSCAN_STAGE):/workspace/config" \
+	-v "$(FIRMWARE_STAGE):/firmware" \
+	-e HOME=/workspace \
+	-w /workspace \
+	$(ZMK_IMAGE)
+
+DISPSCAN_CP = docker run --rm \
+	-v "$(DISPSCAN_VOL):/workspace:ro" \
+	-v "$(FIRMWARE_STAGE):/firmware" \
+	alpine
+
+define sync_dispscan_config
+	@echo "→ Syncing config → $(DISPSCAN_STAGE)"
+	@mkdir -p "$(DISPSCAN_STAGE)"
+	@rsync -a --delete "$(CONFIG_PATH)/" "$(DISPSCAN_STAGE)/"
+endef
+
+dispscan-init: ## Display: first-time west workspace setup (separate volume, ZMK main)
+	@echo ""
+	@echo "→ Creating Docker volume ($(DISPSCAN_VOL))"
+	@docker volume create "$(DISPSCAN_VOL)" > /dev/null
+	@docker pull $(ZMK_IMAGE)
+	$(call sync_dispscan_config)
+	@if [ ! -f "$(DISPSCAN_SENTINEL)" ]; then \
+		echo "→ Running west init (manifest: config/west.yml, ZMK main)"; \
+		$(DISPSCAN_WEST) west init -l /workspace/config; \
+	else \
+		echo "→ West already initialized, skipping west init"; \
+	fi
+	@echo "→ Running west update (~1–2 GB on first run)"
+	$(DISPSCAN_WEST) west update
+	$(DISPSCAN_WEST) west zephyr-export
+	@touch "$(DISPSCAN_SENTINEL)"
+	@echo ""
+	@echo "✓ Display workspace initialized. Run 'make dispscan'."
+	@echo ""
+
+dispscan: ## Display: build the remote status display image (DISPSCAN_UF2)
+	@if [ ! -f "$(DISPSCAN_SENTINEL)" ]; then \
+		echo ""; echo "✗ Display workspace not initialized. Run: make dispscan-init"; \
+		echo ""; exit 1; \
+	fi
+	$(call sync_dispscan_config)
+	@echo ""
+	@echo "→ Building $(DISPSCAN_SHIELD) on $(DISPSCAN_BOARD)"
+	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
+	$(DISPSCAN_BUILD) west build \
+		-s /workspace/zmk/app \
+		-d /workspace/build/dispscan \
+		-b $(DISPSCAN_BOARD) \
+		-- \
+		-DZMK_CONFIG=/workspace/config \
+		-DSHIELD="$(DISPSCAN_SHIELD)"
+	$(DISPSCAN_CP) cp /workspace/build/dispscan/zephyr/zmk.uf2 \
+		/firmware/$(DISPSCAN_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(DISPSCAN_UF2)" "$(FIRMWARE_DIR)/$(DISPSCAN_UF2)"
+	@echo "✓ Display → $(FIRMWARE_DIR)/$(DISPSCAN_UF2)"
+	@echo ""
+
+dispscan-fake: ## Display: build the UI-validation image (fake data, no radio)
+	@if [ ! -f "$(DISPSCAN_SENTINEL)" ]; then \
+		echo ""; echo "✗ Display workspace not initialized. Run: make dispscan-init"; \
+		echo ""; exit 1; \
+	fi
+	$(call sync_dispscan_config)
+	@echo ""
+	@echo "→ Building $(DISPSCAN_SHIELD) with the FAKE source (no BLE observer)"
+	@mkdir -p "$(FIRMWARE_STAGE)" "$(FIRMWARE_DIR)"
+	$(DISPSCAN_BUILD) west build \
+		-s /workspace/zmk/app \
+		-d /workspace/build/dispscan-fake \
+		-b $(DISPSCAN_BOARD) \
+		-- \
+		-DZMK_CONFIG=/workspace/config \
+		-DSHIELD="$(DISPSCAN_SHIELD)" \
+		-DCONFIG_DISPSCAN_OBSERVER=n
+	$(DISPSCAN_CP) cp /workspace/build/dispscan-fake/zephyr/zmk.uf2 \
+		/firmware/$(DISPSCAN_FAKE_UF2)
+	@cp "$(FIRMWARE_STAGE)/$(DISPSCAN_FAKE_UF2)" "$(FIRMWARE_DIR)/$(DISPSCAN_FAKE_UF2)"
+	@echo "✓ Display (FAKE) → $(FIRMWARE_DIR)/$(DISPSCAN_FAKE_UF2)"
 	@echo ""
 
 # ─── Cache Management ─────────────────────────────────────────────────────────

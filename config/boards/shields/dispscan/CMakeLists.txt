@@ -16,6 +16,22 @@ if(CONFIG_ZMK_DISPLAY)
   zephyr_library_include_directories(${CMAKE_SOURCE_DIR}/include)
   zephyr_library_sources(custom_status_screen.c)
 
+  # Vendored drawing assets: two 1bpp glyph sets and a pixel font. Data only --
+  # no logic was imported and nothing here references ZMK. Provenance, licences
+  # and the reason none of the upstream projects could be consumed as a west
+  # module instead are in vendor/README.md.
+  #
+  # Unconditional, unlike the sources below, because the renderer is
+  # unconditional: custom_status_screen.c references these symbols whether or
+  # not anything is feeding it data, so gating them would break the "with both
+  # source symbols n, only the renderer compiles and it still links" property
+  # documented further down.
+  zephyr_library_sources(
+    vendor/dispscan_sym_mods.c
+    vendor/dispscan_sym_output.c
+    vendor/dispscan_font_pixel_operator.c
+  )
+
   # Development scaffold only -- see the banner in dispscan_fake_source.c. The
   # _ifdef form is what makes CONFIG_DISPSCAN_FAKE_SOURCE=n a genuine removal
   # rather than a runtime no-op: the translation unit is not compiled, so the
